@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createDHLShipment } from "@/lib/carriers/dhl";
+import { createDHLShipment, getDHLLabel } from "@/lib/carriers/dhl";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -67,11 +67,15 @@ export async function POST(request: Request) {
       weight: weight ? parseFloat(weight) : 1,
     });
 
+    // Get label PDF separately
+    const labelData = await getDHLLabel(result.shipmentId);
+
     const updated = await prisma.shipment.update({
       where: { id: shipment.id },
       data: {
         trackingNumber: result.trackingNumber,
-        labelData: new Uint8Array(result.labelData),
+        labelData: new Uint8Array(labelData),
+        labelUrl: result.shipmentId, // Store DHL shipment ID for cancel
         status: "LABEL_GENERATED",
       },
     });

@@ -70,7 +70,6 @@ export async function POST(request: Request) {
       });
     } else {
       confirmationNumber = await requestDHLPickup({
-        shipmentTrackingNumber: shipment.trackingNumber || "",
         senderName: shipment.senderName,
         senderStreet: shipment.senderStreet,
         senderCity: shipment.senderCity,
@@ -80,7 +79,6 @@ export async function POST(request: Request) {
         pickupDate,
         pickupTimeFrom,
         pickupTimeTo,
-        weight: shipment.weight || 1,
       });
     }
 

@@ -23,10 +23,10 @@ const API_KEY_LABELS: Record<string, string> = {
   INPOST_API_TOKEN: "InPost API Token",
   INPOST_ORGANIZATION_ID: "InPost Organization ID",
   INPOST_API_URL: "InPost API URL",
-  DHL_API_KEY: "DHL API Key",
-  DHL_API_SECRET: "DHL API Secret",
-  DHL_API_URL: "DHL API URL",
-  DHL_ACCOUNT_NUMBER: "DHL Account Number",
+  DHL_API_LOGIN: "DHL Login APIv2",
+  DHL_API_PASSWORD: "DHL Hasło APIv2",
+  DHL_SAP_NUMBER: "DHL Numer SAP",
+  DHL_API_URL: "DHL API URL (domyślnie: dhl24.com.pl/webapi2)",
   WHATSAPP_TOKEN: "WhatsApp Token",
   WHATSAPP_PHONE_NUMBER_ID: "WhatsApp Phone Number ID",
 };
@@ -37,8 +37,8 @@ const API_KEY_GROUPS = [
     keys: ["INPOST_API_TOKEN", "INPOST_ORGANIZATION_ID", "INPOST_API_URL"],
   },
   {
-    name: "DHL",
-    keys: ["DHL_API_KEY", "DHL_API_SECRET", "DHL_API_URL", "DHL_ACCOUNT_NUMBER"],
+    name: "DHL (DHL24 Polska)",
+    keys: ["DHL_API_LOGIN", "DHL_API_PASSWORD", "DHL_SAP_NUMBER", "DHL_API_URL"],
   },
   {
     name: "WhatsApp",

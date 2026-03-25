@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cancelInPostShipment, getInPostShipmentStatus } from "@/lib/carriers/inpost";
+import { deleteDHLShipment } from "@/lib/carriers/dhl";
 
 export async function POST(
   request: Request,
@@ -45,6 +46,9 @@ export async function POST(
           inpostStatus: result.status,
         }, { status: 400 });
       }
+    } else if (shipment.carrier === "DHL" && shipment.labelUrl) {
+      await deleteDHLShipment(shipment.labelUrl);
+      cancelMessage = "Przesyłka DHL anulowana.";
     }
 
     await prisma.shipment.update({
