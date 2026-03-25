@@ -167,11 +167,80 @@ export async function createInPostShipment(data: InPostShipmentData) {
   }
 
   const result = await response.json();
+  const shipmentId = result.id;
+
+  // Confirm/buy the shipment if not yet confirmed
+  if (result.status !== "confirmed") {
+    await confirmInPostShipment(config, shipmentId);
+    // Wait for shipment to be confirmed (async process)
+    await waitForShipmentConfirmation(config, shipmentId);
+  }
+
   return {
-    shipmentId: result.id,
+    shipmentId,
     trackingNumber: result.tracking_number,
-    status: result.status,
+    status: "confirmed",
   };
+}
+
+async function confirmInPostShipment(
+  config: { token: string; organizationId: string; apiUrl: string },
+  shipmentId: string
+) {
+  const response = await fetch(
+    `${config.apiUrl}/organizations/${config.organizationId}/shipments/${shipmentId}/confirm`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    // Try alternative buy endpoint
+    const buyResponse = await fetch(
+      `${config.apiUrl}/organizations/${config.organizationId}/shipments/${shipmentId}/buy`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!buyResponse.ok) {
+      const errorData = await buyResponse.text();
+      throw new Error(`InPost confirm/buy error: ${buyResponse.status} - ${errorData}`);
+    }
+  }
+}
+
+async function waitForShipmentConfirmation(
+  config: { token: string; apiUrl: string },
+  shipmentId: string,
+  maxAttempts = 10
+) {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    const response = await fetch(`${config.apiUrl}/shipments/${shipmentId}`, {
+      headers: { Authorization: `Bearer ${config.token}` },
+    });
+
+    if (response.ok) {
+      const shipment = await response.json();
+      if (shipment.status === "confirmed" || shipment.status === "dispatched") {
+        return;
+      }
+      if (shipment.status === "cancelled" || shipment.status === "error") {
+        throw new Error(`Przesyłka InPost ma status: ${shipment.status}`);
+      }
+    }
+  }
+  // Continue anyway - label might be available
 }
 
 export async function getInPostLabel(shipmentId: string): Promise<Buffer> {
