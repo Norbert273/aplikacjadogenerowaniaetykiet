@@ -1,9 +1,15 @@
 #!/bin/sh
-echo "Running database migrations..."
-npx prisma migrate deploy 2>/dev/null || echo "Migrations skipped (may need manual setup)"
+set -e
 
-echo "Running seed..."
-npx tsx prisma/seed.ts 2>/dev/null || echo "Seed skipped"
+echo "=== Pushing database schema ==="
+npx prisma db push --skip-generate --accept-data-loss 2>&1 || {
+  echo "WARNING: db push failed, retrying in 5s..."
+  sleep 5
+  npx prisma db push --skip-generate --accept-data-loss 2>&1 || echo "WARNING: db push failed again. Tables may need manual setup."
+}
 
-echo "Starting application..."
+echo "=== Running seed ==="
+node prisma/seed.mjs 2>&1 || echo "WARNING: Seed failed (admin may already exist)"
+
+echo "=== Starting application ==="
 node server.js
