@@ -112,7 +112,7 @@ export default function PrzesylkiPage() {
   }
 
   async function handleCancel(shipmentId: string) {
-    if (!confirm("Czy na pewno chcesz anulować tę przesyłkę? Ta operacja jest nieodwracalna.")) return;
+    if (!confirm("Czy na pewno chcesz anulować tę przesyłkę?\n\nPrzesyłka zostanie anulowana w InPost i opłata nie zostanie pobrana (jeśli paczka nie została jeszcze nadana).")) return;
 
     setCancellingId(shipmentId);
     try {
@@ -137,6 +137,20 @@ export default function PrzesylkiPage() {
       alert("Błąd połączenia");
     } finally {
       setCancellingId(null);
+    }
+  }
+
+  async function handleCheckStatus(shipmentId: string) {
+    try {
+      const res = await fetch(`/api/shipments/${shipmentId}/cancel`);
+      const data = await res.json();
+      if (data.inpostStatus) {
+        alert(`Status InPost: ${data.inpostStatusPl}\nStatus lokalny: ${data.localStatus}`);
+      } else {
+        alert(`Status lokalny: ${data.localStatus}`);
+      }
+    } catch {
+      alert("Błąd sprawdzania statusu");
     }
   }
 
@@ -321,6 +335,14 @@ export default function PrzesylkiPage() {
                             className="text-purple-600 hover:text-purple-800 text-xs font-medium"
                           >
                             Kurier
+                          </button>
+                        )}
+                        {shipment.hasLabel && (
+                          <button
+                            onClick={() => handleCheckStatus(shipment.id)}
+                            className="text-gray-600 hover:text-gray-800 text-xs font-medium"
+                          >
+                            Status
                           </button>
                         )}
                         {shipment.status !== "ERROR" && (

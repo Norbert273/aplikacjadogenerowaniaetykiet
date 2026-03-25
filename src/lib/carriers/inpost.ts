@@ -389,9 +389,16 @@ export async function requestInPostPickup(data: InPostPickupData): Promise<strin
   return result.id?.toString() || result.dispatch_order_id?.toString() || "OK";
 }
 
-export async function cancelInPostShipment(shipmentId: string): Promise<void> {
+export interface CancelResult {
+  success: boolean;
+  status: string;
+  message: string;
+}
+
+export async function cancelInPostShipment(shipmentId: string): Promise<CancelResult> {
   const config = await getInPostConfig();
 
+  // Step 1: Try to cancel via DELETE
   const response = await fetch(
     `${config.apiUrl}/shipments/${shipmentId}`,
     {
@@ -404,8 +411,85 @@ export async function cancelInPostShipment(shipmentId: string): Promise<void> {
 
   if (!response.ok) {
     const errorData = await response.text();
-    throw new Error(`InPost cancel error: ${response.status} - ${errorData}`);
+    // Check current status to give better error message
+    const currentShipment = await getShipmentData(config, shipmentId);
+    const currentStatus = currentShipment.status || "unknown";
+
+    if (currentStatus === "dispatched" || currentStatus === "collected" || currentStatus === "delivered") {
+      return {
+        success: false,
+        status: currentStatus,
+        message: `Nie można anulować - przesyłka ma status: ${translateStatus(currentStatus)}. Paczka została już nadana.`,
+      };
+    }
+
+    return {
+      success: false,
+      status: currentStatus,
+      message: `Błąd anulowania InPost (status: ${currentStatus}): ${errorData}`,
+    };
   }
+
+  // Step 2: Verify cancellation - poll InPost to confirm status changed
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  const verifyShipment = await getShipmentData(config, shipmentId);
+  const finalStatus = verifyShipment.status || "unknown";
+
+  console.log(`InPost cancel verification - shipment ${shipmentId} status: ${finalStatus}`);
+
+  if (finalStatus === "cancelled" || finalStatus === "canceled") {
+    return {
+      success: true,
+      status: finalStatus,
+      message: "Przesyłka anulowana w InPost. Opłata nie zostanie pobrana.",
+    };
+  }
+
+  // Status might not update immediately - check if it's not in a "charged" state
+  if (finalStatus === "confirmed" || finalStatus === "created" || finalStatus === "offer_selected") {
+    // Still in pre-dispatch state, cancel likely went through
+    return {
+      success: true,
+      status: finalStatus,
+      message: `Żądanie anulowania wysłane. Aktualny status InPost: ${translateStatus(finalStatus)}. Sprawdź ponownie za chwilę.`,
+    };
+  }
+
+  return {
+    success: false,
+    status: finalStatus,
+    message: `Anulowanie niepewne. Status InPost: ${translateStatus(finalStatus)}. Sprawdź w panelu InPost.`,
+  };
+}
+
+export async function getInPostShipmentStatus(shipmentId: string): Promise<{ status: string; statusPl: string }> {
+  const config = await getInPostConfig();
+  const shipment = await getShipmentData(config, shipmentId);
+  const status = shipment.status || "unknown";
+  return { status, statusPl: translateStatus(status) };
+}
+
+function translateStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    created: "Utworzona",
+    offer_selected: "Oferta wybrana",
+    offers_prepared: "Oferty przygotowane",
+    confirmed: "Potwierdzona",
+    dispatched: "Nadana",
+    collected: "Odebrana przez kuriera",
+    taken_by_courier: "W drodze",
+    adopted_at_source_branch: "W oddziale źródłowym",
+    sent_from_source_branch: "Wysłana z oddziału",
+    ready_to_pickup: "Gotowa do odbioru",
+    delivered: "Dostarczona",
+    returned_to_sender: "Zwrócona do nadawcy",
+    avizo: "Awizo",
+    cancelled: "Anulowana",
+    canceled: "Anulowana",
+    unknown: "Nieznany",
+  };
+  return statusMap[status] || status;
 }
 
 function getLockerTemplate(size: string): string {
