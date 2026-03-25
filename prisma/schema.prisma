@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum Carrier {
+  INPOST
+  DHL
+}
+
+enum ShipmentStatus {
+  PENDING
+  LABEL_GENERATED
+  SENT_WHATSAPP
+  ERROR
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  passwordHash String
+  role         Role       @default(USER)
+  phone        String?
+  street       String?
+  city         String?
+  postalCode   String?
+  country      String     @default("PL")
+  companyName  String?
+  shipments    Shipment[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Shipment {
+  id                  String         @id @default(cuid())
+  userId              String
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  carrier             Carrier
+  trackingNumber      String?
+  labelData           Bytes?
+  labelUrl            String?
+  status              ShipmentStatus @default(PENDING)
+  senderName          String
+  senderStreet        String
+  senderCity          String
+  senderPostalCode    String
+  senderPhone         String?
+  senderEmail         String?
+  recipientName       String
+  recipientStreet     String
+  recipientCity       String
+  recipientPostalCode String
+  recipientPhone      String?
+  recipientEmail      String?
+  parcelSize          String?
+  weight              Float?
+  whatsappSent        Boolean        @default(false)
+  whatsappSentAt      DateTime?
+  errorMessage        String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([userId])
+}
+
+model CompanyAddress {
+  id            String   @id @default(cuid())
+  name          String
+  street        String
+  city          String
+  postalCode    String
+  country       String   @default("PL")
+  phone         String?
+  email         String?
+  contactPerson String?
+  isActive      Boolean  @default(true)
+  updatedAt     DateTime @updatedAt
+}
+
+model AppSettings {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+}
