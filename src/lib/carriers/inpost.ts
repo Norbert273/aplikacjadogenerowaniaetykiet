@@ -222,7 +222,13 @@ async function waitForOffers(
     const shipment = await getShipmentData(config, shipmentId);
     console.log(`InPost poll #${i + 1} - status: ${shipment.status}, offers: ${shipment.offers?.length || 0}`);
 
-    // Check if offers are available
+    // If already confirmed (auto-buy in simplified mode), no need to buy
+    if (shipment.status === "confirmed" || shipment.status === "dispatched") {
+      console.log("InPost: auto-confirmed by simplified mode, skipping buy");
+      return 0; // Signal that no buy is needed
+    }
+
+    // Check if offers are available (for offer mode)
     if (shipment.offers && shipment.offers.length > 0) {
       const offerId = Number(shipment.offers[0].id);
       console.log("InPost offer found:", offerId);
@@ -234,11 +240,6 @@ async function waitForOffers(
       const offerId = Number(shipment.selected_offer.id);
       console.log("InPost selected_offer found:", offerId);
       return offerId;
-    }
-
-    // If already confirmed (auto-buy in simplified mode), no need to buy
-    if (shipment.status === "confirmed" || shipment.status === "dispatched") {
-      return 0; // Signal that no buy is needed
     }
   }
 
