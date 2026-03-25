@@ -169,8 +169,25 @@ export async function createInPostShipment(data: InPostShipmentData) {
   const result = await response.json();
   const shipmentId = result.id;
 
-  // Extract offer_id from response (needed for buy endpoint)
-  const offerId = result.selected_offer?.id || result.offers?.[0]?.id;
+  // Log full response for debugging
+  console.log("InPost create response:", JSON.stringify({
+    id: result.id,
+    status: result.status,
+    tracking_number: result.tracking_number,
+    selected_offer: result.selected_offer,
+    offers: result.offers,
+    offer_id: result.offer_id,
+    // Log all top-level keys to find offer_id
+    keys: Object.keys(result),
+  }, null, 2));
+
+  // Extract offer_id - try multiple locations, ensure it's a number
+  const rawOfferId = result.selected_offer?.id
+    ?? result.offers?.[0]?.id
+    ?? result.offer_id;
+  const offerId = rawOfferId ? Number(rawOfferId) : undefined;
+
+  console.log("Extracted offerId:", offerId, "type:", typeof offerId);
 
   // Buy/confirm the shipment if not yet confirmed
   if (result.status !== "confirmed") {
@@ -189,13 +206,18 @@ export async function createInPostShipment(data: InPostShipmentData) {
 async function buyInPostShipment(
   config: { token: string; organizationId: string; apiUrl: string },
   shipmentId: string,
-  offerId?: string
+  offerId?: number
 ) {
   // Correct endpoint: /v1/shipments/{id}/buy (without /organizations/)
   const body: Record<string, unknown> = {};
-  if (offerId) {
+  if (offerId !== undefined) {
     body.offer_id = offerId;
   }
+
+  console.log("InPost buy request:", JSON.stringify({
+    url: `${config.apiUrl}/shipments/${shipmentId}/buy`,
+    body
+  }));
 
   const response = await fetch(
     `${config.apiUrl}/shipments/${shipmentId}/buy`,
