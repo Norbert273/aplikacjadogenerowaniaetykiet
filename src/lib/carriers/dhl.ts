@@ -155,3 +155,84 @@ export async function createDHLShipment(
 
   return { trackingNumber, labelData };
 }
+
+interface DHLPickupData {
+  shipmentTrackingNumber: string;
+  senderName: string;
+  senderStreet: string;
+  senderCity: string;
+  senderPostalCode: string;
+  senderPhone: string;
+  senderEmail: string;
+  pickupDate: string;
+  pickupTimeFrom: string;
+  pickupTimeTo: string;
+  weight: number;
+}
+
+export async function requestDHLPickup(data: DHLPickupData): Promise<string> {
+  const config = await getDHLConfig();
+
+  const payload = {
+    plannedPickupDateAndTime: `${data.pickupDate}T${data.pickupTimeFrom}:00`,
+    closeTime: `${data.pickupTimeTo}:00`,
+    location: "reception",
+    locationType: "business",
+    accounts: [
+      {
+        typeCode: "shipper",
+        number: config.accountNumber,
+      },
+    ],
+    customerDetails: {
+      shipperDetails: {
+        postalAddress: {
+          postalCode: data.senderPostalCode,
+          cityName: data.senderCity,
+          countryCode: "PL",
+          addressLine1: data.senderStreet,
+        },
+        contactInformation: {
+          email: data.senderEmail,
+          phone: data.senderPhone,
+          companyName: data.senderName,
+          fullName: data.senderName,
+        },
+      },
+    },
+    shipmentDetails: [
+      {
+        productCode: "N",
+        packages: [
+          {
+            weight: data.weight,
+            dimensions: { length: 30, width: 20, height: 15 },
+          },
+        ],
+        unitOfMeasurement: "metric",
+        isCustomsDeclarable: false,
+      },
+    ],
+  };
+
+  const authString = Buffer.from(
+    `${config.apiKey}:${config.apiSecret}`
+  ).toString("base64");
+
+  const response = await fetch(`${config.apiUrl}/pickups`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${authString}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.text();
+    throw new Error(`DHL Pickup API error: ${response.status} - ${errorData}`);
+  }
+
+  const result = await response.json();
+  return result.dispatchConfirmationNumber || result.id || "OK";
+}

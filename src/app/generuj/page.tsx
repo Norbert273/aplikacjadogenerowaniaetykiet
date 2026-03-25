@@ -1,16 +1,15 @@
 "use client";
 
-import { useSession } from "next-auth/react";
 import { useState, useEffect } from "react";
 
-interface UserProfile {
+interface SenderTemplate {
+  id: string;
   name: string;
   street: string;
   city: string;
   postalCode: string;
-  phone: string;
-  email: string;
-  companyName: string;
+  phone: string | null;
+  email: string | null;
 }
 
 interface CompanyAddress {
@@ -24,7 +23,6 @@ interface CompanyAddress {
 }
 
 export default function GenerujPage() {
-  const { data: session } = useSession();
   const [carrier, setCarrier] = useState<"INPOST" | "DHL" | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{
@@ -32,43 +30,44 @@ export default function GenerujPage() {
     trackingNumber: string;
   } | null>(null);
   const [error, setError] = useState("");
-  const [companyAddress, setCompanyAddress] = useState<CompanyAddress | null>(null);
+  const [companyAddress, setCompanyAddress] = useState<CompanyAddress | null>(
+    null
+  );
   const [whatsappSending, setWhatsappSending] = useState(false);
   const [whatsappSent, setWhatsappSent] = useState(false);
 
-  const [sender, setSender] = useState<UserProfile>({
+  // Sender templates
+  const [templates, setTemplates] = useState<SenderTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+
+  const [sender, setSender] = useState({
     name: "",
     street: "",
     city: "",
     postalCode: "",
     phone: "",
     email: "",
-    companyName: "",
   });
 
   const [parcelSize, setParcelSize] = useState("A");
   const [weight, setWeight] = useState("1");
 
+  // Pickup
+  const [showPickup, setShowPickup] = useState(false);
+  const [pickupLoading, setPickupLoading] = useState(false);
+  const [pickupResult, setPickupResult] = useState<string | null>(null);
+  const [pickupDate, setPickupDate] = useState("");
+  const [pickupTimeFrom, setPickupTimeFrom] = useState("10:00");
+  const [pickupTimeTo, setPickupTimeTo] = useState("16:00");
+
   useEffect(() => {
-    // Load user profile for sender defaults
-    if (session?.user?.id) {
-      fetch(`/api/users/${session.user.id}/profile`)
-        .then((res) => res.ok ? res.json() : null)
-        .then((data) => {
-          if (data) {
-            setSender({
-              name: data.companyName || data.name || "",
-              street: data.street || "",
-              city: data.city || "",
-              postalCode: data.postalCode || "",
-              phone: data.phone || "",
-              email: data.email || "",
-              companyName: data.companyName || "",
-            });
-          }
-        })
-        .catch(() => {});
-    }
+    // Load sender templates
+    fetch("/api/sender-templates")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setTemplates(data);
+      })
+      .catch(() => {});
 
     // Load company address
     fetch("/api/settings/company")
@@ -77,7 +76,27 @@ export default function GenerujPage() {
         if (data && data.name) setCompanyAddress(data);
       })
       .catch(() => {});
-  }, [session]);
+
+    // Set default pickup date to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setPickupDate(tomorrow.toISOString().split("T")[0]);
+  }, []);
+
+  function handleSelectTemplate(templateId: string) {
+    setSelectedTemplateId(templateId);
+    const template = templates.find((t) => t.id === templateId);
+    if (template) {
+      setSender({
+        name: template.name,
+        street: template.street,
+        city: template.city,
+        postalCode: template.postalCode,
+        phone: template.phone || "",
+        email: template.email || "",
+      });
+    }
+  }
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
@@ -87,6 +106,8 @@ export default function GenerujPage() {
     setError("");
     setResult(null);
     setWhatsappSent(false);
+    setPickupResult(null);
+    setShowPickup(false);
 
     const endpoint =
       carrier === "INPOST" ? "/api/labels/inpost" : "/api/labels/dhl";
@@ -98,7 +119,9 @@ export default function GenerujPage() {
       senderPostalCode: sender.postalCode,
       senderPhone: sender.phone,
       senderEmail: sender.email,
-      ...(carrier === "INPOST" ? { parcelSize } : { weight: parseFloat(weight) }),
+      ...(carrier === "INPOST"
+        ? { parcelSize }
+        : { weight: parseFloat(weight) }),
     };
 
     try {
@@ -149,6 +172,37 @@ export default function GenerujPage() {
     }
   }
 
+  async function handleRequestPickup() {
+    if (!result) return;
+
+    setPickupLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/pickup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shipmentId: result.id,
+          pickupDate,
+          pickupTimeFrom,
+          pickupTimeTo,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Błąd zamawiania kuriera");
+      } else {
+        setPickupResult(data.confirmationNumber);
+      }
+    } catch {
+      setError("Błąd połączenia z serwerem");
+    } finally {
+      setPickupLoading(false);
+    }
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">
@@ -190,8 +244,18 @@ export default function GenerujPage() {
             onClick={() => setCarrier(null)}
             className="text-sm text-blue-600 hover:text-blue-800 mb-4 flex items-center gap-1"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
             Zmień przewoźnika
           </button>
@@ -199,18 +263,54 @@ export default function GenerujPage() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
             <h2 className="font-semibold text-gray-900 mb-1">
               Przewoźnik:{" "}
-              <span className={carrier === "INPOST" ? "text-orange-500" : "text-yellow-600"}>
+              <span
+                className={
+                  carrier === "INPOST" ? "text-orange-500" : "text-yellow-600"
+                }
+              >
                 {carrier === "INPOST" ? "InPost" : "DHL"}
               </span>
             </h2>
           </div>
 
           <form onSubmit={handleGenerate} className="space-y-6">
-            {/* Sender Info */}
+            {/* Sender Template Selection */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h3 className="font-semibold text-gray-900 mb-4">
-                Dane nadawcy (Twoje dane)
+                Dane nadawcy
               </h3>
+
+              {templates.length > 0 && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Wybierz z szablonu
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {templates.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => handleSelectTemplate(t.id)}
+                        className={`p-3 rounded-lg border-2 text-left transition-colors ${
+                          selectedTemplateId === t.id
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <div className="font-medium text-sm">{t.name}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {t.street}, {t.postalCode} {t.city}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="border-b border-gray-200 mt-4 mb-4" />
+                  <p className="text-xs text-gray-400 mb-2">
+                    Lub wypełnij ręcznie:
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -301,9 +401,7 @@ export default function GenerujPage() {
 
             {/* Parcel Details */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">
-                Dane paczki
-              </h3>
+              <h3 className="font-semibold text-gray-900 mb-4">Dane paczki</h3>
               {carrier === "INPOST" ? (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -311,9 +409,21 @@ export default function GenerujPage() {
                   </label>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { value: "A", label: "A (mała)", desc: "8 x 38 x 64 cm" },
-                      { value: "B", label: "B (średnia)", desc: "19 x 38 x 64 cm" },
-                      { value: "C", label: "C (duża)", desc: "41 x 38 x 64 cm" },
+                      {
+                        value: "A",
+                        label: "A (mała)",
+                        desc: "8 x 38 x 64 cm",
+                      },
+                      {
+                        value: "B",
+                        label: "B (średnia)",
+                        desc: "19 x 38 x 64 cm",
+                      },
+                      {
+                        value: "C",
+                        label: "C (duża)",
+                        desc: "41 x 38 x 64 cm",
+                      },
                     ].map((size) => (
                       <button
                         key={size.value}
@@ -326,7 +436,9 @@ export default function GenerujPage() {
                         }`}
                       >
                         <div className="font-semibold">{size.label}</div>
-                        <div className="text-xs text-gray-500">{size.desc}</div>
+                        <div className="text-xs text-gray-500">
+                          {size.desc}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -398,8 +510,18 @@ export default function GenerujPage() {
         <div className="max-w-2xl">
           <div className="bg-green-50 border border-green-200 rounded-xl p-6 mb-6">
             <div className="flex items-center gap-3 mb-3">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="w-6 h-6 text-green-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
               <h2 className="text-lg font-semibold text-green-800">
                 Etykieta wygenerowana!
@@ -415,7 +537,7 @@ export default function GenerujPage() {
             )}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
             <a
               href={`/api/labels/${result.id}/download`}
               className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors text-center"
@@ -434,25 +556,144 @@ export default function GenerujPage() {
                   ? "Wysyłanie..."
                   : "Wyślij przez WhatsApp"}
             </button>
+          </div>
 
-            <button
-              onClick={() => {
-                setResult(null);
-                setCarrier(null);
-                setError("");
-                setWhatsappSent(false);
-              }}
-              className="flex-1 bg-gray-200 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
-            >
-              Nowa etykieta
-            </button>
+          {/* Courier Pickup */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900">
+                Zamów odbiór kuriera
+              </h3>
+              {!showPickup && !pickupResult && (
+                <button
+                  onClick={() => setShowPickup(true)}
+                  className="text-sm bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors"
+                >
+                  Zamów kuriera
+                </button>
+              )}
+            </div>
+
+            {pickupResult && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <div className="flex items-center gap-2">
+                  <svg
+                    className="w-5 h-5 text-purple-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                  <p className="text-purple-800 font-medium">
+                    Kurier zamówiony!
+                  </p>
+                </div>
+                <p className="text-sm text-purple-700 mt-1">
+                  Numer potwierdzenia:{" "}
+                  <span className="font-mono">{pickupResult}</span>
+                </p>
+                <p className="text-sm text-purple-700">
+                  Data: {pickupDate}, godz. {pickupTimeFrom} - {pickupTimeTo}
+                </p>
+              </div>
+            )}
+
+            {showPickup && !pickupResult && (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-500">
+                  Kurier przyjedzie pod adres nadawcy po odbiór paczki.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Data odbioru
+                    </label>
+                    <input
+                      type="date"
+                      value={pickupDate}
+                      onChange={(e) => setPickupDate(e.target.value)}
+                      min={new Date().toISOString().split("T")[0]}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Od godziny
+                    </label>
+                    <input
+                      type="time"
+                      value={pickupTimeFrom}
+                      onChange={(e) => setPickupTimeFrom(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Do godziny
+                    </label>
+                    <input
+                      type="time"
+                      value={pickupTimeTo}
+                      onChange={(e) => setPickupTimeTo(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleRequestPickup}
+                    disabled={pickupLoading}
+                    className="bg-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors disabled:opacity-50"
+                  >
+                    {pickupLoading
+                      ? "Zamawianie..."
+                      : "Potwierdź odbiór kuriera"}
+                  </button>
+                  <button
+                    onClick={() => setShowPickup(false)}
+                    className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                  >
+                    Anuluj
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {error && (
-            <div className="mt-4 bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
+            <div className="mb-4 bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}
             </div>
           )}
+
+          <button
+            onClick={() => {
+              setResult(null);
+              setCarrier(null);
+              setError("");
+              setWhatsappSent(false);
+              setPickupResult(null);
+              setShowPickup(false);
+              setSelectedTemplateId("");
+              setSender({
+                name: "",
+                street: "",
+                city: "",
+                postalCode: "",
+                phone: "",
+                email: "",
+              });
+            }}
+            className="w-full bg-gray-200 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+          >
+            Nowa etykieta
+          </button>
         </div>
       )}
     </div>

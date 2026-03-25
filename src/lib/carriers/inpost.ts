@@ -131,6 +131,60 @@ export async function getInPostLabel(shipmentId: string): Promise<Buffer> {
   return Buffer.from(arrayBuffer);
 }
 
+interface InPostPickupData {
+  shipmentId: string;
+  senderName: string;
+  senderStreet: string;
+  senderCity: string;
+  senderPostalCode: string;
+  senderPhone: string;
+  senderEmail: string;
+  pickupDate: string;
+  pickupTimeFrom: string;
+  pickupTimeTo: string;
+}
+
+export async function requestInPostPickup(data: InPostPickupData): Promise<string> {
+  const config = await getInPostConfig();
+
+  const payload = {
+    shipments: [data.shipmentId],
+    address: {
+      street: data.senderStreet,
+      city: data.senderCity,
+      post_code: data.senderPostalCode,
+      country_code: "PL",
+    },
+    phone: data.senderPhone,
+    email: data.senderEmail,
+    name: data.senderName,
+    pickup_date: data.pickupDate,
+    min_time: data.pickupTimeFrom,
+    max_time: data.pickupTimeTo,
+    comment: "Odbiór paczki - Generator Etykiet",
+  };
+
+  const response = await fetch(
+    `${config.apiUrl}/organizations/${config.organizationId}/dispatch_orders`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.text();
+    throw new Error(`InPost Pickup API error: ${response.status} - ${errorData}`);
+  }
+
+  const result = await response.json();
+  return result.id?.toString() || result.dispatch_order_id?.toString() || "OK";
+}
+
 function getParcelDimensions(size: string) {
   switch (size) {
     case "A":
