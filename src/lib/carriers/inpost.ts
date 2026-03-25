@@ -42,6 +42,33 @@ async function getInPostConfig() {
   return { token, organizationId, apiUrl };
 }
 
+// Parse name into company_name + first_name + last_name for InPost API
+function parsePersonName(fullName: string): {
+  company_name: string;
+  first_name: string;
+  last_name: string;
+} {
+  const trimmed = fullName.trim();
+  const parts = trimmed.split(/\s+/);
+  if (parts.length >= 2) {
+    // If looks like a person name (2-3 words), use as first/last
+    // Otherwise treat as company name
+    const looksLikeCompany =
+      parts.length > 3 ||
+      /sp\.|s\.a\.|z o\.o\.|ltd|gmbh|inc|s\.c\.|s\.j\./i.test(trimmed);
+    if (looksLikeCompany) {
+      return { company_name: trimmed, first_name: trimmed, last_name: trimmed };
+    }
+    return {
+      company_name: trimmed,
+      first_name: parts[0],
+      last_name: parts.slice(1).join(" "),
+    };
+  }
+  // Single word - use for all fields
+  return { company_name: trimmed, first_name: trimmed, last_name: trimmed };
+}
+
 // Parse street like "Kwiatowa 15" or "ul. Kwiatowa 15/3" into street + building_number
 function parseStreetAndBuilding(fullStreet: string): {
   street: string;
@@ -62,24 +89,47 @@ export async function createInPostShipment(data: InPostShipmentData) {
 
   const senderAddr = parseStreetAndBuilding(data.senderStreet);
   const recipientAddr = parseStreetAndBuilding(data.recipientStreet);
+  const senderPerson = parsePersonName(data.senderName);
+  const recipientPerson = parsePersonName(data.recipientName);
 
   const serviceType = data.serviceType || "inpost_courier_standard";
+  const isLocker = serviceType === "inpost_locker_standard";
+
+  // Build receiver based on service type
+  const receiver: Record<string, unknown> = {
+    company_name: recipientPerson.company_name,
+    first_name: recipientPerson.first_name,
+    last_name: recipientPerson.last_name,
+    phone: data.recipientPhone,
+    email: data.recipientEmail,
+  };
+  // Locker shipments don't need receiver address, courier ones do
+  if (!isLocker) {
+    receiver.address = {
+      street: recipientAddr.street,
+      building_number: recipientAddr.building_number,
+      city: data.recipientCity,
+      post_code: data.recipientPostalCode,
+      country_code: "PL",
+    };
+  }
+
+  // Build parcels - locker uses template names, courier uses explicit dimensions
+  const parcels = isLocker
+    ? [{ template: getLockerTemplate(data.parcelSize) }]
+    : [
+        {
+          dimensions: getParcelDimensions(data.parcelSize),
+          weight: { amount: 1, unit: "kg" },
+        },
+      ];
 
   const shipmentPayload: Record<string, unknown> = {
-    receiver: {
-      name: data.recipientName,
-      phone: data.recipientPhone,
-      email: data.recipientEmail,
-      address: {
-        street: recipientAddr.street,
-        building_number: recipientAddr.building_number,
-        city: data.recipientCity,
-        post_code: data.recipientPostalCode,
-        country_code: "PL",
-      },
-    },
+    receiver,
     sender: {
-      name: data.senderName,
+      company_name: senderPerson.company_name,
+      first_name: senderPerson.first_name,
+      last_name: senderPerson.last_name,
       phone: data.senderPhone,
       email: data.senderEmail,
       address: {
@@ -90,27 +140,14 @@ export async function createInPostShipment(data: InPostShipmentData) {
         country_code: "PL",
       },
     },
-    parcels: [
-      {
-        dimensions: getParcelDimensions(data.parcelSize),
-        weight: {
-          amount: 1,
-          unit: "kg",
-        },
-        is_non_standard: false,
-      },
-    ],
+    parcels,
     service: serviceType,
+    custom_attributes: {
+      sending_method: "dispatch_order",
+      ...(isLocker && data.targetPoint ? { target_point: data.targetPoint } : {}),
+    },
     reference: `LABEL-${Date.now()}`,
-    comments: "Wygenerowano przez Generator Etykiet",
   };
-
-  // target_point is required for locker service
-  if (serviceType === "inpost_locker_standard" && data.targetPoint) {
-    shipmentPayload.custom_attributes = {
-      target_point: data.targetPoint,
-    };
-  }
 
   const response = await fetch(
     `${config.apiUrl}/organizations/${config.organizationId}/shipments`,
@@ -217,6 +254,15 @@ export async function requestInPostPickup(data: InPostPickupData): Promise<strin
 
   const result = await response.json();
   return result.id?.toString() || result.dispatch_order_id?.toString() || "OK";
+}
+
+function getLockerTemplate(size: string): string {
+  switch (size) {
+    case "A": return "small";
+    case "B": return "medium";
+    case "C": return "large";
+    default: return "small";
+  }
 }
 
 function getParcelDimensions(size: string) {
