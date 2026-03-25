@@ -51,6 +51,8 @@ export default function GenerujPage() {
 
   const [parcelSize, setParcelSize] = useState("A");
   const [weight, setWeight] = useState("1");
+  const [inpostService, setInpostService] = useState<"inpost_courier_standard" | "inpost_locker_standard">("inpost_courier_standard");
+  const [targetPoint, setTargetPoint] = useState("");
 
   // Pickup
   const [showPickup, setShowPickup] = useState(false);
@@ -120,7 +122,7 @@ export default function GenerujPage() {
       senderPhone: sender.phone,
       senderEmail: sender.email,
       ...(carrier === "INPOST"
-        ? { parcelSize }
+        ? { parcelSize, serviceType: inpostService, targetPoint: inpostService === "inpost_locker_standard" ? targetPoint : undefined }
         : { weight: parseFloat(weight) }),
     };
 
@@ -403,44 +405,97 @@ export default function GenerujPage() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Dane paczki</h3>
               {carrier === "INPOST" ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Rozmiar paczki
-                  </label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {[
-                      {
-                        value: "A",
-                        label: "A (mała)",
-                        desc: "8 x 38 x 64 cm",
-                      },
-                      {
-                        value: "B",
-                        label: "B (średnia)",
-                        desc: "19 x 38 x 64 cm",
-                      },
-                      {
-                        value: "C",
-                        label: "C (duża)",
-                        desc: "41 x 38 x 64 cm",
-                      },
-                    ].map((size) => (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Typ usługi
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
                       <button
-                        key={size.value}
                         type="button"
-                        onClick={() => setParcelSize(size.value)}
+                        onClick={() => setInpostService("inpost_courier_standard")}
                         className={`p-3 rounded-lg border-2 text-center transition-colors ${
-                          parcelSize === size.value
+                          inpostService === "inpost_courier_standard"
                             ? "border-orange-400 bg-orange-50"
                             : "border-gray-200 hover:border-gray-300"
                         }`}
                       >
-                        <div className="font-semibold">{size.label}</div>
-                        <div className="text-xs text-gray-500">
-                          {size.desc}
-                        </div>
+                        <div className="font-semibold">Kurier</div>
+                        <div className="text-xs text-gray-500">Dostawa pod adres</div>
                       </button>
-                    ))}
+                      <button
+                        type="button"
+                        onClick={() => setInpostService("inpost_locker_standard")}
+                        className={`p-3 rounded-lg border-2 text-center transition-colors ${
+                          inpostService === "inpost_locker_standard"
+                            ? "border-orange-400 bg-orange-50"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <div className="font-semibold">Paczkomat</div>
+                        <div className="text-xs text-gray-500">Dostawa do paczkomatu</div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {inpostService === "inpost_locker_standard" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Kod paczkomatu docelowego *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={targetPoint}
+                        onChange={(e) => setTargetPoint(e.target.value.toUpperCase())}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                        placeholder="np. KRA010"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Kod paczkomatu InPost, do którego ma trafić paczka
+                      </p>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Rozmiar paczki
+                    </label>
+                    <div className="grid grid-cols-3 gap-3">
+                      {[
+                        {
+                          value: "A",
+                          label: "A (mała)",
+                          desc: "8 x 38 x 64 cm",
+                        },
+                        {
+                          value: "B",
+                          label: "B (średnia)",
+                          desc: "19 x 38 x 64 cm",
+                        },
+                        {
+                          value: "C",
+                          label: "C (duża)",
+                          desc: "41 x 38 x 64 cm",
+                        },
+                      ].map((size) => (
+                        <button
+                          key={size.value}
+                          type="button"
+                          onClick={() => setParcelSize(size.value)}
+                          className={`p-3 rounded-lg border-2 text-center transition-colors ${
+                            parcelSize === size.value
+                              ? "border-orange-400 bg-orange-50"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className="font-semibold">{size.label}</div>
+                          <div className="text-xs text-gray-500">
+                            {size.desc}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ) : (

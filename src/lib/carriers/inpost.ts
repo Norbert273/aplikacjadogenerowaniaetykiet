@@ -14,6 +14,8 @@ interface InPostShipmentData {
   recipientPhone: string;
   recipientEmail: string;
   parcelSize: string; // "A", "B", "C"
+  targetPoint?: string; // Paczkomat code (required for locker service)
+  serviceType?: string; // "inpost_locker_standard" or "inpost_courier_standard"
 }
 
 async function getInPostConfig() {
@@ -40,16 +42,37 @@ async function getInPostConfig() {
   return { token, organizationId, apiUrl };
 }
 
+// Parse street like "Kwiatowa 15" or "ul. Kwiatowa 15/3" into street + building_number
+function parseStreetAndBuilding(fullStreet: string): {
+  street: string;
+  building_number: string;
+} {
+  const trimmed = fullStreet.trim();
+  // Match building number at the end: "Kwiatowa 15", "Kwiatowa 15/3", "Kwiatowa 15A"
+  const match = trimmed.match(/^(.+?)\s+(\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)?)$/);
+  if (match) {
+    return { street: match[1], building_number: match[2] };
+  }
+  // Fallback: use entire string as street, empty building number
+  return { street: trimmed, building_number: "" };
+}
+
 export async function createInPostShipment(data: InPostShipmentData) {
   const config = await getInPostConfig();
 
-  const shipmentPayload = {
+  const senderAddr = parseStreetAndBuilding(data.senderStreet);
+  const recipientAddr = parseStreetAndBuilding(data.recipientStreet);
+
+  const serviceType = data.serviceType || "inpost_courier_standard";
+
+  const shipmentPayload: Record<string, unknown> = {
     receiver: {
       name: data.recipientName,
       phone: data.recipientPhone,
       email: data.recipientEmail,
       address: {
-        street: data.recipientStreet,
+        street: recipientAddr.street,
+        building_number: recipientAddr.building_number,
         city: data.recipientCity,
         post_code: data.recipientPostalCode,
         country_code: "PL",
@@ -60,7 +83,8 @@ export async function createInPostShipment(data: InPostShipmentData) {
       phone: data.senderPhone,
       email: data.senderEmail,
       address: {
-        street: data.senderStreet,
+        street: senderAddr.street,
+        building_number: senderAddr.building_number,
         city: data.senderCity,
         post_code: data.senderPostalCode,
         country_code: "PL",
@@ -76,10 +100,17 @@ export async function createInPostShipment(data: InPostShipmentData) {
         is_non_standard: false,
       },
     ],
-    service: "inpost_locker_standard",
+    service: serviceType,
     reference: `LABEL-${Date.now()}`,
     comments: "Wygenerowano przez Generator Etykiet",
   };
+
+  // target_point is required for locker service
+  if (serviceType === "inpost_locker_standard" && data.targetPoint) {
+    shipmentPayload.custom_attributes = {
+      target_point: data.targetPoint,
+    };
+  }
 
   const response = await fetch(
     `${config.apiUrl}/organizations/${config.organizationId}/shipments`,
@@ -147,10 +178,13 @@ interface InPostPickupData {
 export async function requestInPostPickup(data: InPostPickupData): Promise<string> {
   const config = await getInPostConfig();
 
+  const senderAddr = parseStreetAndBuilding(data.senderStreet);
+
   const payload = {
     shipments: [data.shipmentId],
     address: {
-      street: data.senderStreet,
+      street: senderAddr.street,
+      building_number: senderAddr.building_number,
       city: data.senderCity,
       post_code: data.senderPostalCode,
       country_code: "PL",

@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { senderName, senderStreet, senderCity, senderPostalCode, senderPhone, senderEmail, parcelSize } = body;
+  const { senderName, senderStreet, senderCity, senderPostalCode, senderPhone, senderEmail, parcelSize, serviceType, targetPoint } = body;
 
   if (!senderName || !senderStreet || !senderCity || !senderPostalCode) {
     return Response.json(
@@ -67,6 +67,8 @@ export async function POST(request: Request) {
       recipientPhone: companyAddress.phone || "",
       recipientEmail: companyAddress.email || "",
       parcelSize: parcelSize || "A",
+      serviceType: serviceType || "inpost_courier_standard",
+      targetPoint: targetPoint || undefined,
     });
 
     // Get label PDF
