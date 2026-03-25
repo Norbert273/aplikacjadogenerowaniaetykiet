@@ -169,9 +169,12 @@ export async function createInPostShipment(data: InPostShipmentData) {
   const result = await response.json();
   const shipmentId = result.id;
 
-  // Confirm/buy the shipment if not yet confirmed
+  // Extract offer_id from response (needed for buy endpoint)
+  const offerId = result.selected_offer?.id || result.offers?.[0]?.id;
+
+  // Buy/confirm the shipment if not yet confirmed
   if (result.status !== "confirmed") {
-    await confirmInPostShipment(config, shipmentId);
+    await buyInPostShipment(config, shipmentId, offerId);
     // Wait for shipment to be confirmed (async process)
     await waitForShipmentConfirmation(config, shipmentId);
   }
@@ -183,38 +186,32 @@ export async function createInPostShipment(data: InPostShipmentData) {
   };
 }
 
-async function confirmInPostShipment(
+async function buyInPostShipment(
   config: { token: string; organizationId: string; apiUrl: string },
-  shipmentId: string
+  shipmentId: string,
+  offerId?: string
 ) {
+  // Correct endpoint: /v1/shipments/{id}/buy (without /organizations/)
+  const body: Record<string, unknown> = {};
+  if (offerId) {
+    body.offer_id = offerId;
+  }
+
   const response = await fetch(
-    `${config.apiUrl}/organizations/${config.organizationId}/shipments/${shipmentId}/confirm`,
+    `${config.apiUrl}/shipments/${shipmentId}/buy`,
     {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.token}`,
         "Content-Type": "application/json",
       },
+      body: JSON.stringify(body),
     }
   );
 
   if (!response.ok) {
-    // Try alternative buy endpoint
-    const buyResponse = await fetch(
-      `${config.apiUrl}/organizations/${config.organizationId}/shipments/${shipmentId}/buy`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.token}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (!buyResponse.ok) {
-      const errorData = await buyResponse.text();
-      throw new Error(`InPost confirm/buy error: ${buyResponse.status} - ${errorData}`);
-    }
+    const errorData = await response.text();
+    throw new Error(`InPost buy error: ${response.status} - ${errorData}`);
   }
 }
 
@@ -323,6 +320,25 @@ export async function requestInPostPickup(data: InPostPickupData): Promise<strin
 
   const result = await response.json();
   return result.id?.toString() || result.dispatch_order_id?.toString() || "OK";
+}
+
+export async function cancelInPostShipment(shipmentId: string): Promise<void> {
+  const config = await getInPostConfig();
+
+  const response = await fetch(
+    `${config.apiUrl}/shipments/${shipmentId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.text();
+    throw new Error(`InPost cancel error: ${response.status} - ${errorData}`);
+  }
 }
 
 function getLockerTemplate(size: string): string {
