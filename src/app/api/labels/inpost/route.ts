@@ -80,6 +80,7 @@ export async function POST(request: Request) {
       data: {
         trackingNumber: result.trackingNumber,
         labelData: new Uint8Array(labelData),
+        labelUrl: result.shipmentId.toString(), // Store InPost shipment ID for cancel
         status: "LABEL_GENERATED",
       },
     });

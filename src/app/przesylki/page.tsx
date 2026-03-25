@@ -34,6 +34,7 @@ export default function PrzesylkiPage() {
   const [pickupTimeFrom, setPickupTimeFrom] = useState("10:00");
   const [pickupTimeTo, setPickupTimeTo] = useState("16:00");
   const [pickupLoading, setPickupLoading] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const isAdmin = session?.user?.role === "ADMIN";
 
@@ -107,6 +108,35 @@ export default function PrzesylkiPage() {
       alert("Błąd połączenia");
     } finally {
       setPickupLoading(false);
+    }
+  }
+
+  async function handleCancel(shipmentId: string) {
+    if (!confirm("Czy na pewno chcesz anulować tę przesyłkę? Ta operacja jest nieodwracalna.")) return;
+
+    setCancellingId(shipmentId);
+    try {
+      const res = await fetch(`/api/shipments/${shipmentId}/cancel`, {
+        method: "POST",
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setShipments((prev) =>
+          prev.map((s) =>
+            s.id === shipmentId
+              ? { ...s, status: "ERROR" }
+              : s
+          )
+        );
+        alert(data.message || "Przesyłka anulowana");
+      } else {
+        alert(data.error || "Błąd anulowania");
+      }
+    } catch {
+      alert("Błąd połączenia");
+    } finally {
+      setCancellingId(null);
     }
   }
 
@@ -291,6 +321,15 @@ export default function PrzesylkiPage() {
                             className="text-purple-600 hover:text-purple-800 text-xs font-medium"
                           >
                             Kurier
+                          </button>
+                        )}
+                        {shipment.status !== "ERROR" && (
+                          <button
+                            onClick={() => handleCancel(shipment.id)}
+                            disabled={cancellingId === shipment.id}
+                            className="text-red-600 hover:text-red-800 text-xs font-medium disabled:opacity-50"
+                          >
+                            {cancellingId === shipment.id ? "..." : "Anuluj"}
                           </button>
                         )}
                       </div>

@@ -21,16 +21,19 @@ export async function POST(
     return Response.json({ error: "Przesyłka nie znaleziona" }, { status: 404 });
   }
 
-  // Only owner or admin can cancel
   if (shipment.userId !== session.user.id && session.user.role !== "ADMIN") {
     return Response.json({ error: "Brak uprawnień" }, { status: 403 });
   }
 
+  if (shipment.status === "ERROR" && shipment.errorMessage === "Anulowano przez użytkownika") {
+    return Response.json({ error: "Przesyłka już anulowana" }, { status: 400 });
+  }
+
   try {
-    if (shipment.carrier === "INPOST" && shipment.trackingNumber) {
-      // Try to cancel in InPost API using the tracking number as shipment ID
-      // InPost uses numeric IDs, tracking number might differ
-      await cancelInPostShipment(shipment.trackingNumber);
+    // Cancel in carrier API
+    if (shipment.carrier === "INPOST" && shipment.labelUrl) {
+      // labelUrl stores the InPost numeric shipment ID
+      await cancelInPostShipment(shipment.labelUrl);
     }
 
     await prisma.shipment.update({
@@ -41,11 +44,22 @@ export async function POST(
       },
     });
 
-    return Response.json({ success: true });
+    return Response.json({ success: true, message: "Przesyłka anulowana" });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Błąd anulowania" },
-      { status: 500 }
-    );
+    // Even if API cancel fails, mark as cancelled locally
+    const errorMsg = error instanceof Error ? error.message : "Błąd anulowania";
+
+    await prisma.shipment.update({
+      where: { id },
+      data: {
+        status: "ERROR",
+        errorMessage: `Anulowano (błąd API: ${errorMsg})`,
+      },
+    });
+
+    return Response.json({
+      success: true,
+      message: "Przesyłka anulowana lokalnie, ale wystąpił błąd API: " + errorMsg,
+    });
   }
 }
