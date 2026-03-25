@@ -28,10 +28,12 @@ async function getInPostConfig() {
   const token = tokenSetting?.value || process.env.INPOST_API_TOKEN;
   const organizationId =
     orgSetting?.value || process.env.INPOST_ORGANIZATION_ID;
-  const apiUrl =
+  const rawApiUrl =
     urlSetting?.value ||
     process.env.INPOST_API_URL ||
     "https://api-shipx-pl.easypack24.net/v1";
+  // Remove trailing slash to avoid double slashes
+  const apiUrl = rawApiUrl.replace(/\/+$/, "");
 
   if (!token || !organizationId) {
     throw new Error(
@@ -169,50 +171,92 @@ export async function createInPostShipment(data: InPostShipmentData) {
   const result = await response.json();
   const shipmentId = result.id;
 
-  // Log full response for debugging
-  console.log("InPost create response:", JSON.stringify({
-    id: result.id,
-    status: result.status,
-    tracking_number: result.tracking_number,
-    selected_offer: result.selected_offer,
-    offers: result.offers,
-    offer_id: result.offer_id,
-    // Log all top-level keys to find offer_id
-    keys: Object.keys(result),
-  }, null, 2));
+  console.log("InPost create response - id:", shipmentId, "status:", result.status);
 
-  // Extract offer_id - try multiple locations, ensure it's a number
-  const rawOfferId = result.selected_offer?.id
-    ?? result.offers?.[0]?.id
-    ?? result.offer_id;
-  const offerId = rawOfferId ? Number(rawOfferId) : undefined;
-
-  console.log("Extracted offerId:", offerId, "type:", typeof offerId);
-
-  // Buy/confirm the shipment if not yet confirmed
+  // After creation, we need to wait for offers to be prepared, then buy
   if (result.status !== "confirmed") {
+    // Step 1: Wait for offers to be ready
+    const offerId = await waitForOffers(config, shipmentId);
+
+    // Step 2: Buy the shipment with the offer_id
     await buyInPostShipment(config, shipmentId, offerId);
-    // Wait for shipment to be confirmed (async process)
+
+    // Step 3: Wait for confirmation after buying
     await waitForShipmentConfirmation(config, shipmentId);
   }
 
+  // Fetch final shipment data to get tracking number
+  const finalData = await getShipmentData(config, shipmentId);
+
   return {
     shipmentId,
-    trackingNumber: result.tracking_number,
-    status: "confirmed",
+    trackingNumber: finalData.tracking_number || result.tracking_number,
+    status: finalData.status || "confirmed",
   };
+}
+
+async function getShipmentData(
+  config: { token: string; apiUrl: string },
+  shipmentId: string
+) {
+  const response = await fetch(
+    `${config.apiUrl}/shipments/${shipmentId}`,
+    {
+      headers: { Authorization: `Bearer ${config.token}` },
+    }
+  );
+  if (response.ok) {
+    return await response.json();
+  }
+  return {};
+}
+
+async function waitForOffers(
+  config: { token: string; apiUrl: string },
+  shipmentId: string,
+  maxAttempts = 15
+): Promise<number> {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    const shipment = await getShipmentData(config, shipmentId);
+    console.log(`InPost poll #${i + 1} - status: ${shipment.status}, offers: ${shipment.offers?.length || 0}`);
+
+    // Check if offers are available
+    if (shipment.offers && shipment.offers.length > 0) {
+      const offerId = Number(shipment.offers[0].id);
+      console.log("InPost offer found:", offerId);
+      return offerId;
+    }
+
+    // If selected_offer exists, use that
+    if (shipment.selected_offer?.id) {
+      const offerId = Number(shipment.selected_offer.id);
+      console.log("InPost selected_offer found:", offerId);
+      return offerId;
+    }
+
+    // If already confirmed (auto-buy in simplified mode), no need to buy
+    if (shipment.status === "confirmed" || shipment.status === "dispatched") {
+      return 0; // Signal that no buy is needed
+    }
+  }
+
+  throw new Error("InPost: oferty nie zostały przygotowane w czasie. Spróbuj ponownie.");
 }
 
 async function buyInPostShipment(
   config: { token: string; organizationId: string; apiUrl: string },
   shipmentId: string,
-  offerId?: number
+  offerId: number
 ) {
-  // Correct endpoint: /v1/shipments/{id}/buy (without /organizations/)
-  const body: Record<string, unknown> = {};
-  if (offerId !== undefined) {
-    body.offer_id = offerId;
+  // offerId === 0 means shipment was auto-confirmed, skip buy
+  if (offerId === 0) {
+    console.log("InPost: shipment already confirmed, skipping buy");
+    return;
   }
+
+  const body = { offer_id: offerId };
 
   console.log("InPost buy request:", JSON.stringify({
     url: `${config.apiUrl}/shipments/${shipmentId}/buy`,
