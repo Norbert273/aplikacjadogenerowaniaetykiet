@@ -100,8 +100,10 @@ model SenderTemplate {
   country        String   @default("PL")
   phone          String?
   email          String?
-  defaultCarrier String?
-  isActive       Boolean  @default(true)
+  defaultCarrier    String?
+  whatsappGroupId   String?
+  whatsappGroupName String?
+  isActive          Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }

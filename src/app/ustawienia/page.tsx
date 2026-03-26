@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 interface CompanyAddress {
   name: string;
@@ -19,6 +19,14 @@ interface ApiKeySetting {
   hasValue: boolean;
 }
 
+interface WhatsAppStatus {
+  isReady: boolean;
+  hasQR: boolean;
+  qrDataUrl: string | null;
+  isInitializing: boolean;
+  error?: string;
+}
+
 const API_KEY_LABELS: Record<string, string> = {
   INPOST_API_TOKEN: "InPost API Token",
   INPOST_ORGANIZATION_ID: "InPost Organization ID",
@@ -27,8 +35,6 @@ const API_KEY_LABELS: Record<string, string> = {
   DHL_API_PASSWORD: "DHL Hasło APIv2",
   DHL_SAP_NUMBER: "DHL Numer SAP",
   DHL_API_URL: "DHL API URL (domyślnie: dhl24.com.pl/webapi2)",
-  WHATSAPP_TOKEN: "WhatsApp Token",
-  WHATSAPP_PHONE_NUMBER_ID: "WhatsApp Phone Number ID",
 };
 
 const API_KEY_GROUPS = [
@@ -38,11 +44,12 @@ const API_KEY_GROUPS = [
   },
   {
     name: "DHL (DHL24 Polska)",
-    keys: ["DHL_API_LOGIN", "DHL_API_PASSWORD", "DHL_SAP_NUMBER", "DHL_API_URL"],
-  },
-  {
-    name: "WhatsApp",
-    keys: ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"],
+    keys: [
+      "DHL_API_LOGIN",
+      "DHL_API_PASSWORD",
+      "DHL_SAP_NUMBER",
+      "DHL_API_URL",
+    ],
   },
 ];
 
@@ -63,6 +70,27 @@ export default function UstawieniaPage() {
   const [savingKeys, setSavingKeys] = useState(false);
   const [addressMsg, setAddressMsg] = useState("");
   const [keysMsg, setKeysMsg] = useState("");
+
+  // WhatsApp state
+  const [waStatus, setWaStatus] = useState<WhatsAppStatus>({
+    isReady: false,
+    hasQR: false,
+    qrDataUrl: null,
+    isInitializing: false,
+  });
+  const [waLoading, setWaLoading] = useState(false);
+
+  const fetchWhatsAppStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/whatsapp/status");
+      if (res.ok) {
+        const data = await res.json();
+        setWaStatus(data);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     // Load company address
@@ -95,7 +123,18 @@ export default function UstawieniaPage() {
           setExistingKeys(existing);
         }
       });
-  }, []);
+
+    // Load WhatsApp status
+    fetchWhatsAppStatus();
+  }, [fetchWhatsAppStatus]);
+
+  // Auto-poll WhatsApp status when initializing or showing QR
+  useEffect(() => {
+    if (waStatus.isInitializing || (waStatus.hasQR && !waStatus.isReady)) {
+      const interval = setInterval(fetchWhatsAppStatus, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [waStatus.isInitializing, waStatus.hasQR, waStatus.isReady, fetchWhatsAppStatus]);
 
   async function handleSaveAddress(e: React.FormEvent) {
     e.preventDefault();
@@ -165,6 +204,25 @@ export default function UstawieniaPage() {
       setKeysMsg("Błąd połączenia");
     } finally {
       setSavingKeys(false);
+    }
+  }
+
+  async function handleWhatsAppAction(action: "reconnect" | "disconnect") {
+    setWaLoading(true);
+    try {
+      const res = await fetch("/api/whatsapp/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        // Wait a bit then refresh status
+        setTimeout(fetchWhatsAppStatus, 1000);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setWaLoading(false);
     }
   }
 
@@ -297,6 +355,125 @@ export default function UstawieniaPage() {
             {savingAddress ? "Zapisywanie..." : "Zapisz adres"}
           </button>
         </form>
+      </div>
+
+      {/* WhatsApp Connection */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          WhatsApp
+        </h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Połącz WhatsApp, aby wysyłać etykiety do grup lub numerów telefonów.
+          Zeskanuj kod QR aplikacją WhatsApp na telefonie.
+        </p>
+
+        {/* Status indicator */}
+        <div className="flex items-center gap-3 mb-4">
+          <div
+            className={`w-3 h-3 rounded-full ${
+              waStatus.isReady
+                ? "bg-green-500"
+                : waStatus.isInitializing || waStatus.hasQR
+                  ? "bg-yellow-500 animate-pulse"
+                  : "bg-red-500"
+            }`}
+          />
+          <span className="text-sm font-medium text-gray-700">
+            {waStatus.isReady
+              ? "Połączono z WhatsApp"
+              : waStatus.isInitializing
+                ? "Łączenie..."
+                : waStatus.hasQR
+                  ? "Oczekiwanie na skanowanie kodu QR"
+                  : "Niepołączono"}
+          </span>
+        </div>
+
+        {/* QR Code */}
+        {waStatus.hasQR && waStatus.qrDataUrl && (
+          <div className="mb-4 flex flex-col items-center">
+            <div className="bg-white p-4 rounded-xl border-2 border-gray-200 inline-block">
+              <img
+                src={waStatus.qrDataUrl}
+                alt="WhatsApp QR Code"
+                width={300}
+                height={300}
+              />
+            </div>
+            <p className="text-sm text-gray-500 mt-3">
+              Otwórz WhatsApp na telefonie &rarr; Ustawienia &rarr; Połączone urządzenia &rarr; Połącz urządzenie
+            </p>
+          </div>
+        )}
+
+        {/* Initializing spinner */}
+        {waStatus.isInitializing && !waStatus.hasQR && (
+          <div className="mb-4 flex items-center gap-2 text-yellow-600">
+            <svg
+              className="w-5 h-5 animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
+            </svg>
+            <span className="text-sm">Uruchamianie WhatsApp...</span>
+          </div>
+        )}
+
+        {waStatus.error && (
+          <div className="mb-4 bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
+            {waStatus.error}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          {!waStatus.isReady && !waStatus.isInitializing && (
+            <button
+              onClick={() => handleWhatsAppAction("reconnect")}
+              disabled={waLoading}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
+            >
+              {waLoading ? "Łączenie..." : "Połącz WhatsApp"}
+            </button>
+          )}
+          {waStatus.isReady && (
+            <button
+              onClick={() => handleWhatsAppAction("disconnect")}
+              disabled={waLoading}
+              className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              Rozłącz
+            </button>
+          )}
+          {(waStatus.isReady || waStatus.hasQR) && (
+            <button
+              onClick={() => handleWhatsAppAction("reconnect")}
+              disabled={waLoading}
+              className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-300 transition-colors disabled:opacity-50"
+            >
+              Odśwież / Nowy QR
+            </button>
+          )}
+          <button
+            onClick={fetchWhatsAppStatus}
+            className="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+          >
+            Odśwież status
+          </button>
+        </div>
       </div>
 
       {/* API Keys */}

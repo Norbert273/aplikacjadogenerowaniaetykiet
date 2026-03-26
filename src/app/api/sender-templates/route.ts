@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { name, street, city, postalCode, country, phone, email, defaultCarrier } = body;
+  const { name, street, city, postalCode, country, phone, email, defaultCarrier, whatsappGroupId, whatsappGroupName } = body;
 
   if (!name || !street || !city || !postalCode) {
     return Response.json(
@@ -41,6 +41,8 @@ export async function POST(request: Request) {
       phone: phone || null,
       email: email || null,
       defaultCarrier: defaultCarrier || null,
+      whatsappGroupId: whatsappGroupId || null,
+      whatsappGroupName: whatsappGroupName || null,
     },
   });
 

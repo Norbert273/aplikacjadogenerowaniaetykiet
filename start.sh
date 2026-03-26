@@ -38,5 +38,12 @@ echo "=== Running seed ==="
 echo "ADMIN_EMAIL is set: $([ -n "$ADMIN_EMAIL" ] && echo 'YES' || echo 'NO')"
 node prisma/seed.mjs 2>&1 || echo "WARNING: Seed failed (admin may already exist)"
 
+echo "=== Checking Chromium for WhatsApp ==="
+if which chromium > /dev/null 2>&1; then
+  echo "Chromium found: $(chromium --version 2>/dev/null || echo 'installed')"
+else
+  echo "WARNING: Chromium not found - WhatsApp integration will not work"
+fi
+
 echo "=== Starting application ==="
 node server.js

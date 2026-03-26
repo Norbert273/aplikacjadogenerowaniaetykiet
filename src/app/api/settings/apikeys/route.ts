@@ -9,8 +9,6 @@ const ALLOWED_KEYS = [
   "DHL_API_PASSWORD",
   "DHL_SAP_NUMBER",
   "DHL_API_URL",
-  "WHATSAPP_TOKEN",
-  "WHATSAPP_PHONE_NUMBER_ID",
 ];
 
 export async function GET() {

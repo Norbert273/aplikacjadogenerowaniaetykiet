@@ -24,7 +24,10 @@ export async function POST(request: Request) {
   });
 
   if (!shipment) {
-    return Response.json({ error: "Przesyłka nie znaleziona" }, { status: 404 });
+    return Response.json(
+      { error: "Przesyłka nie znaleziona" },
+      { status: 404 }
+    );
   }
 
   if (
@@ -41,10 +44,31 @@ export async function POST(request: Request) {
     );
   }
 
-  const recipientPhone = phone || shipment.user.phone;
-  if (!recipientPhone) {
+  // Check if the sender template has a WhatsApp group assigned
+  let whatsappGroupId: string | null = null;
+  let whatsappGroupName: string | null = null;
+
+  // Find the sender template by matching sender name
+  const senderTemplate = await prisma.senderTemplate.findFirst({
+    where: {
+      name: shipment.senderName,
+      isActive: true,
+    },
+  });
+
+  if (senderTemplate) {
+    whatsappGroupId = senderTemplate.whatsappGroupId;
+    whatsappGroupName = senderTemplate.whatsappGroupName;
+  }
+
+  const recipientPhone = phone || shipment.senderPhone || shipment.user.phone;
+
+  if (!whatsappGroupId && !recipientPhone) {
     return Response.json(
-      { error: "Brak numeru telefonu. Podaj numer lub uzupełnij profil użytkownika." },
+      {
+        error:
+          "Brak grupy WhatsApp i numeru telefonu. Przypisz grupę do szablonu nadawcy lub podaj numer.",
+      },
       { status: 400 }
     );
   }
@@ -52,9 +76,11 @@ export async function POST(request: Request) {
   try {
     await sendLabelViaWhatsApp(
       Buffer.from(shipment.labelData),
-      recipientPhone,
+      recipientPhone || "",
       shipment.trackingNumber || "",
-      shipment.carrier
+      shipment.carrier,
+      whatsappGroupId,
+      whatsappGroupName
     );
 
     await prisma.shipment.update({
@@ -66,10 +92,18 @@ export async function POST(request: Request) {
       },
     });
 
-    return Response.json({ success: true });
+    return Response.json({
+      success: true,
+      sentTo: whatsappGroupId
+        ? `Grupa: ${whatsappGroupName || whatsappGroupId}`
+        : recipientPhone,
+    });
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "Błąd wysyłki WhatsApp" },
+      {
+        error:
+          error instanceof Error ? error.message : "Błąd wysyłki WhatsApp",
+      },
       { status: 500 }
     );
   }
