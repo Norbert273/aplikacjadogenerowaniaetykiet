@@ -53,7 +53,7 @@ RUN for f in $(find /usr -name 'chrome_crashpad_handler' -o -name 'chrome-crashp
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 RUN groupadd --system --gid 1001 nodejs
-RUN useradd --system --uid 1001 nextjs
+RUN useradd --system --uid 1001 --create-home --home-dir /home/nextjs -g nodejs nextjs
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
@@ -70,9 +70,9 @@ COPY start.sh ./start.sh
 
 RUN chmod +x ./start.sh
 
-# Create whatsapp auth directory and crash dumps dir with correct permissions
-RUN mkdir -p /app/.wwebjs_auth /tmp/crash-dumps && \
-    chown -R nextjs:nodejs /app/.wwebjs_auth /tmp/crash-dumps
+# Fix permissions: nextjs user needs write access
+RUN mkdir -p /app/.wwebjs_auth && \
+    chown -R nextjs:nodejs /app/.wwebjs_auth /app/node_modules/.prisma /app/node_modules/@prisma
 
 # Fix chrome_crashpad_handler: point XDG dirs to writable /tmp
 # This is the actual fix - crashpad needs a writable dir for its database
