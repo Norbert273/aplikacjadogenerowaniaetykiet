@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import * as soap from "soap";
 
 interface DHLShipmentData {
   senderName: string;
@@ -20,7 +21,7 @@ interface DHLConfig {
   username: string;
   password: string;
   sapNumber: string;
-  apiUrl: string;
+  wsdlUrl: string;
 }
 
 async function getDHLConfig(): Promise<DHLConfig> {
@@ -34,10 +35,10 @@ async function getDHLConfig(): Promise<DHLConfig> {
   const username = userSetting?.value || process.env.DHL_API_LOGIN;
   const password = passSetting?.value || process.env.DHL_API_PASSWORD;
   const sapNumber = sapSetting?.value || process.env.DHL_SAP_NUMBER;
-  const apiUrl =
+  const wsdlUrl =
     urlSetting?.value ||
     process.env.DHL_API_URL ||
-    "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
+    "https://dhl24.com.pl/webapi2.html";
 
   if (!username || !password || !sapNumber) {
     throw new Error(
@@ -45,7 +46,7 @@ async function getDHLConfig(): Promise<DHLConfig> {
     );
   }
 
-  return { username, password, sapNumber, apiUrl };
+  return { username, password, sapNumber, wsdlUrl };
 }
 
 // Parse street "Kwiatowa 15/3" into street + houseNumber + apartmentNumber
@@ -71,86 +72,39 @@ function cleanPostalCode(code: string): string {
   return code.replace(/-/g, "");
 }
 
-// Build SOAP XML envelope
-function buildSoapEnvelope(method: string, body: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
-  <soapenv:Body>
-    <${method}>
-      ${body}
-    </${method}>
-  </soapenv:Body>
-</soapenv:Envelope>`;
-}
+// Create SOAP client from WSDL
+let cachedClient: soap.Client | null = null;
+let cachedWsdlUrl: string | null = null;
 
-function authDataXml(config: DHLConfig): string {
-  return `<authData>
-    <username>${escapeXml(config.username)}</username>
-    <password>${escapeXml(config.password)}</password>
-  </authData>`;
-}
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-async function soapCall(config: DHLConfig, method: string, body: string): Promise<string> {
-  const envelope = buildSoapEnvelope(method, body);
-
-  console.log(`DHL SOAP call: ${method} to ${config.apiUrl}`);
-  console.log(`DHL SOAP envelope (first 500 chars):`, envelope.substring(0, 500));
-
-  const response = await fetch(config.apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/xml; charset=utf-8",
-      "SOAPAction": method,
-    },
-    body: envelope,
-  });
-
-  const responseText = await response.text();
-  console.log(`DHL SOAP response status: ${response.status}, content-type: ${response.headers.get('content-type')}`);
-  console.log(`DHL SOAP response (first 1000 chars):`, responseText.substring(0, 1000));
-
-  if (!response.ok) {
-    // Extract fault message from SOAP response
-    const faultMatch = responseText.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
-    const detailMatch = responseText.match(/<detail>([\s\S]*?)<\/detail>/);
-    const errorMsg = faultMatch?.[1] || detailMatch?.[1] || responseText.substring(0, 500);
-    throw new Error(`DHL API error: ${response.status} - ${errorMsg}`);
+async function getSoapClient(config: DHLConfig): Promise<soap.Client> {
+  if (cachedClient && cachedWsdlUrl === config.wsdlUrl) {
+    return cachedClient;
   }
 
-  return responseText;
+  console.log(`DHL: Creating SOAP client from WSDL: ${config.wsdlUrl}`);
+  const client = await soap.createClientAsync(config.wsdlUrl);
+  cachedClient = client;
+  cachedWsdlUrl = config.wsdlUrl;
+
+  // Log available methods for debugging
+  const description = client.describe();
+  console.log("DHL SOAP service description:", JSON.stringify(Object.keys(description), null, 2));
+
+  return client;
 }
 
-// Extract value from XML by tag name
-function extractXmlValue(xml: string, tag: string): string {
-  const regex = new RegExp(`<(?:[^:]+:)?${tag}[^>]*>([\\s\\S]*?)</(?:[^:]+:)?${tag}>`);
-  const match = xml.match(regex);
-  return match?.[1]?.trim() || "";
-}
-
-// Extract all values for a tag
-function extractAllXmlValues(xml: string, tag: string): string[] {
-  const regex = new RegExp(`<(?:[^:]+:)?${tag}[^>]*>([\\s\\S]*?)</(?:[^:]+:)?${tag}>`, "g");
-  const matches: string[] = [];
-  let match;
-  while ((match = regex.exec(xml)) !== null) {
-    matches.push(match[1].trim());
-  }
-  return matches;
+function getAuthData(config: DHLConfig) {
+  return {
+    username: config.username,
+    password: config.password,
+  };
 }
 
 export async function createDHLShipment(
   data: DHLShipmentData
 ): Promise<{ shipmentId: string; trackingNumber: string }> {
   const config = await getDHLConfig();
+  const client = await getSoapClient(config);
 
   const senderAddr = parseAddress(data.senderStreet);
   const recipientAddr = parseAddress(data.recipientStreet);
@@ -159,114 +113,142 @@ export async function createDHLShipment(
   tomorrow.setDate(tomorrow.getDate() + 1);
   const shipmentDate = tomorrow.toISOString().split("T")[0];
 
-  const body = `
-    ${authDataXml(config)}
-    <shipments>
-      <item>
-        <shipper>
-          <name>${escapeXml(data.senderName)}</name>
-          <postalCode>${escapeXml(cleanPostalCode(data.senderPostalCode))}</postalCode>
-          <city>${escapeXml(data.senderCity)}</city>
-          <street>${escapeXml(senderAddr.street)}</street>
-          <houseNumber>${escapeXml(senderAddr.houseNumber)}</houseNumber>
-          ${senderAddr.apartmentNumber ? `<apartmentNumber>${escapeXml(senderAddr.apartmentNumber)}</apartmentNumber>` : ""}
-          <contactPerson>${escapeXml(data.senderName)}</contactPerson>
-          <contactPhone>${escapeXml(data.senderPhone)}</contactPhone>
-          <contactEmail>${escapeXml(data.senderEmail)}</contactEmail>
-        </shipper>
-        <receiver>
-          <name>${escapeXml(data.recipientName)}</name>
-          <postalCode>${escapeXml(cleanPostalCode(data.recipientPostalCode))}</postalCode>
-          <city>${escapeXml(data.recipientCity)}</city>
-          <street>${escapeXml(recipientAddr.street)}</street>
-          <houseNumber>${escapeXml(recipientAddr.houseNumber)}</houseNumber>
-          ${recipientAddr.apartmentNumber ? `<apartmentNumber>${escapeXml(recipientAddr.apartmentNumber)}</apartmentNumber>` : ""}
-          <contactPerson>${escapeXml(data.recipientName)}</contactPerson>
-          <contactPhone>${escapeXml(data.recipientPhone)}</contactPhone>
-          <contactEmail>${escapeXml(data.recipientEmail)}</contactEmail>
-          <country>PL</country>
-        </receiver>
-        <pieceList>
-          <item>
-            <type>PACKAGE</type>
-            <weight>${Math.max(1, Math.round(data.weight))}</weight>
-            <width>30</width>
-            <height>20</height>
-            <length>40</length>
-            <quantity>1</quantity>
-            <nonStandard>false</nonStandard>
-          </item>
-        </pieceList>
-        <payment>
-          <shippingPaymentType>SHIPPER</shippingPaymentType>
-          <billingAccountNumber>${escapeXml(config.sapNumber)}</billingAccountNumber>
-          <paymentType>BANK_TRANSFER</paymentType>
-        </payment>
-        <service>
-          <product>AH</product>
-          <collectOnDelivery>false</collectOnDelivery>
-          <insurance>false</insurance>
-        </service>
-        <shipmentDate>${shipmentDate}</shipmentDate>
-        <content>Przesylka</content>
-        <reference>LABEL-${Date.now()}</reference>
-        <skipRestrictionCheck>true</skipRestrictionCheck>
-      </item>
-    </shipments>`;
-
-  const responseXml = await soapCall(config, "createShipments", body);
-
-  console.log("DHL createShipments response (first 1000 chars):", responseXml.substring(0, 1000));
-
-  const shipmentId = extractXmlValue(responseXml, "shipmentId");
-
-  if (!shipmentId) {
-    // Check for error
-    const errorMsg = extractXmlValue(responseXml, "value") || extractXmlValue(responseXml, "message");
-    throw new Error(`DHL: nie udało się utworzyć przesyłki. ${errorMsg || "Brak shipmentId w odpowiedzi."}`);
-  }
-
-  return {
-    shipmentId,
-    trackingNumber: shipmentId, // DHL24 uses shipmentId as tracking number
+  const args = {
+    authData: getAuthData(config),
+    shipments: {
+      item: {
+        shipper: {
+          name: data.senderName,
+          postalCode: cleanPostalCode(data.senderPostalCode),
+          city: data.senderCity,
+          street: senderAddr.street,
+          houseNumber: senderAddr.houseNumber,
+          ...(senderAddr.apartmentNumber ? { apartmentNumber: senderAddr.apartmentNumber } : {}),
+          contactPerson: data.senderName,
+          contactPhone: data.senderPhone,
+          contactEmail: data.senderEmail,
+        },
+        receiver: {
+          name: data.recipientName,
+          postalCode: cleanPostalCode(data.recipientPostalCode),
+          city: data.recipientCity,
+          street: recipientAddr.street,
+          houseNumber: recipientAddr.houseNumber,
+          ...(recipientAddr.apartmentNumber ? { apartmentNumber: recipientAddr.apartmentNumber } : {}),
+          contactPerson: data.recipientName,
+          contactPhone: data.recipientPhone,
+          contactEmail: data.recipientEmail,
+          country: "PL",
+        },
+        pieceList: {
+          item: {
+            type: "PACKAGE",
+            weight: Math.max(1, Math.round(data.weight)),
+            width: 30,
+            height: 20,
+            length: 40,
+            quantity: 1,
+            nonStandard: false,
+          },
+        },
+        payment: {
+          shippingPaymentType: "SHIPPER",
+          billingAccountNumber: config.sapNumber,
+          paymentType: "BANK_TRANSFER",
+        },
+        service: {
+          product: "AH",
+          collectOnDelivery: false,
+          insurance: false,
+        },
+        shipmentDate: shipmentDate,
+        content: "Przesylka",
+        reference: `LABEL-${Date.now()}`,
+        skipRestrictionCheck: true,
+      },
+    },
   };
+
+  console.log("DHL createShipments args:", JSON.stringify(args, null, 2));
+
+  try {
+    const [result] = await client.createShipmentsAsync(args);
+    console.log("DHL createShipments result:", JSON.stringify(result, null, 2));
+
+    const item = result?.item || result?.createShipmentsResult?.item;
+    const shipmentId = item?.shipmentId || item?.[0]?.shipmentId;
+
+    if (!shipmentId) {
+      const errorMsg = item?.error || item?.[0]?.error || JSON.stringify(result);
+      throw new Error(`DHL: nie udało się utworzyć przesyłki. ${errorMsg}`);
+    }
+
+    return {
+      shipmentId: String(shipmentId),
+      trackingNumber: String(shipmentId),
+    };
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.includes("DHL:")) throw error;
+    console.error("DHL createShipments error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`DHL API error: ${msg}`);
+  }
 }
 
 export async function getDHLLabel(shipmentId: string): Promise<Buffer> {
   const config = await getDHLConfig();
+  const client = await getSoapClient(config);
 
-  const body = `
-    ${authDataXml(config)}
-    <itemsToPrint>
-      <item>
-        <labelType>BLP</labelType>
-        <shipmentId>${escapeXml(shipmentId)}</shipmentId>
-      </item>
-    </itemsToPrint>`;
+  const args = {
+    authData: getAuthData(config),
+    itemsToPrint: {
+      item: {
+        labelType: "BLP",
+        shipmentId: shipmentId,
+      },
+    },
+  };
 
-  const responseXml = await soapCall(config, "getLabels", body);
+  try {
+    const [result] = await client.getLabelsAsync(args);
+    console.log("DHL getLabels result keys:", Object.keys(result || {}));
 
-  const labelData = extractXmlValue(responseXml, "labelData");
+    const item = result?.item || result?.getLabelsResult?.item;
+    const labelData = item?.labelData || item?.[0]?.labelData;
 
-  if (!labelData) {
-    throw new Error("DHL: nie udało się pobrać etykiety. Brak danych etykiety w odpowiedzi.");
+    if (!labelData) {
+      throw new Error("DHL: nie udało się pobrać etykiety. Brak danych etykiety w odpowiedzi.");
+    }
+
+    return Buffer.from(labelData, "base64");
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.includes("DHL:")) throw error;
+    console.error("DHL getLabels error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`DHL API error: ${msg}`);
   }
-
-  return Buffer.from(labelData, "base64");
 }
 
 export async function deleteDHLShipment(shipmentId: string): Promise<void> {
   const config = await getDHLConfig();
+  const client = await getSoapClient(config);
 
-  const body = `
-    ${authDataXml(config)}
-    <shipments>
-      <item>
-        <shipmentId>${escapeXml(shipmentId)}</shipmentId>
-      </item>
-    </shipments>`;
+  const args = {
+    authData: getAuthData(config),
+    shipments: {
+      item: {
+        shipmentId: shipmentId,
+      },
+    },
+  };
 
-  await soapCall(config, "deleteShipments", body);
+  try {
+    await client.deleteShipmentsAsync(args);
+  } catch (error: unknown) {
+    console.error("DHL deleteShipments error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`DHL API error: ${msg}`);
+  }
 }
 
 interface DHLPickupData {
@@ -283,31 +265,35 @@ interface DHLPickupData {
 
 export async function requestDHLPickup(data: DHLPickupData): Promise<string> {
   const config = await getDHLConfig();
+  const client = await getSoapClient(config);
 
   const senderAddr = parseAddress(data.senderStreet);
 
-  const body = `
-    ${authDataXml(config)}
-    <bookCourier>
-      <pickupDate>${escapeXml(data.pickupDate)}</pickupDate>
-      <pickupTimeFrom>${escapeXml(data.pickupTimeFrom)}</pickupTimeFrom>
-      <pickupTimeTo>${escapeXml(data.pickupTimeTo)}</pickupTimeTo>
-      <contactPerson>${escapeXml(data.senderName)}</contactPerson>
-      <contactPhone>${escapeXml(data.senderPhone)}</contactPhone>
-      <contactEmail>${escapeXml(data.senderEmail)}</contactEmail>
-      <senderName>${escapeXml(data.senderName)}</senderName>
-      <senderPostalCode>${escapeXml(cleanPostalCode(data.senderPostalCode))}</senderPostalCode>
-      <senderCity>${escapeXml(data.senderCity)}</senderCity>
-      <senderStreet>${escapeXml(senderAddr.street)}</senderStreet>
-      <senderHouseNumber>${escapeXml(senderAddr.houseNumber)}</senderHouseNumber>
-      ${senderAddr.apartmentNumber ? `<senderApartmentNumber>${escapeXml(senderAddr.apartmentNumber)}</senderApartmentNumber>` : ""}
-    </bookCourier>`;
+  const args = {
+    authData: getAuthData(config),
+    bookCourier: {
+      pickupDate: data.pickupDate,
+      pickupTimeFrom: data.pickupTimeFrom,
+      pickupTimeTo: data.pickupTimeTo,
+      contactPerson: data.senderName,
+      contactPhone: data.senderPhone,
+      contactEmail: data.senderEmail,
+      senderName: data.senderName,
+      senderPostalCode: cleanPostalCode(data.senderPostalCode),
+      senderCity: data.senderCity,
+      senderStreet: senderAddr.street,
+      senderHouseNumber: senderAddr.houseNumber,
+      ...(senderAddr.apartmentNumber ? { senderApartmentNumber: senderAddr.apartmentNumber } : {}),
+    },
+  };
 
-  const responseXml = await soapCall(config, "bookCourier", body);
-
-  const orderId = extractXmlValue(responseXml, "orderId") ||
-    extractXmlValue(responseXml, "bookCourierResult") ||
-    "OK";
-
-  return orderId;
+  try {
+    const [result] = await client.bookCourierAsync(args);
+    const orderId = result?.orderId || result?.bookCourierResult || "OK";
+    return String(orderId);
+  } catch (error: unknown) {
+    console.error("DHL bookCourier error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`DHL API error: ${msg}`);
+  }
 }
