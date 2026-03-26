@@ -54,8 +54,13 @@ COPY start.sh ./start.sh
 
 RUN chmod +x ./start.sh
 
-# Create whatsapp auth directory with correct permissions
-RUN mkdir -p /app/.wwebjs_auth && chown -R nextjs:nodejs /app/.wwebjs_auth
+# Create whatsapp auth directory and crash dumps dir with correct permissions
+RUN mkdir -p /app/.wwebjs_auth /tmp/crash-dumps && \
+    chown -R nextjs:nodejs /app/.wwebjs_auth /tmp/crash-dumps
+
+# Disable Chromium crash reporting
+ENV CHROME_CRASHPAD_PIPE_NAME=""
+ENV CRASHPAD_DISABLE=1
 
 USER nextjs
 
