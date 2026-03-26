@@ -73,6 +73,7 @@ function createClient(): Client {
         "--disable-gpu",
         "--no-first-run",
         "--no-zygote",
+        "--disable-features=PartitionAllocSchedulerLoopQuarantineTaskControlledPurge",
       ],
       executablePath,
     },
