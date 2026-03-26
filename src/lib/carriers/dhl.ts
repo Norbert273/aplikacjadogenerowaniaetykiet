@@ -37,7 +37,7 @@ async function getDHLConfig(): Promise<DHLConfig> {
   const apiUrl =
     urlSetting?.value ||
     process.env.DHL_API_URL ||
-    "https://dhl24.com.pl/webapi2";
+    "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
 
   if (!username || !password || !sapNumber) {
     throw new Error(
@@ -74,11 +74,11 @@ function cleanPostalCode(code: string): string {
 // Build SOAP XML envelope
 function buildSoapEnvelope(method: string, body: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="https://dhl24.com.pl/webapi2/provider/service.html?ws=1">
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
   <soapenv:Body>
-    <ws:${method}>
+    <${method}>
       ${body}
-    </ws:${method}>
+    </${method}>
   </soapenv:Body>
 </soapenv:Envelope>`;
 }
@@ -115,6 +115,8 @@ async function soapCall(config: DHLConfig, method: string, body: string): Promis
   });
 
   const responseText = await response.text();
+  console.log(`DHL SOAP response status: ${response.status}, content-type: ${response.headers.get('content-type')}`);
+  console.log(`DHL SOAP response (first 1000 chars):`, responseText.substring(0, 1000));
 
   if (!response.ok) {
     // Extract fault message from SOAP response
