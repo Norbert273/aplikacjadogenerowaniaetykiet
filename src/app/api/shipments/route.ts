@@ -24,6 +24,9 @@ export async function GET() {
     ...s,
     labelData: undefined,
     hasLabel: !!s.labelData,
+    carrierStatus: s.carrierStatus,
+    carrierStatusPl: s.carrierStatusPl,
+    carrierStatusAt: s.carrierStatusAt,
   }));
 
   return Response.json(result);

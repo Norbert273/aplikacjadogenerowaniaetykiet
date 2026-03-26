@@ -66,6 +66,9 @@ model Shipment {
   weight              Float?
   whatsappSent        Boolean        @default(false)
   whatsappSentAt      DateTime?
+  carrierStatus       String?
+  carrierStatusPl     String?
+  carrierStatusAt     DateTime?
   errorMessage        String?
   pickupRequests      PickupRequest[]
   createdAt           DateTime       @default(now())
@@ -89,17 +92,18 @@ model CompanyAddress {
 }
 
 model SenderTemplate {
-  id         String   @id @default(cuid())
-  name       String
-  street     String
-  city       String
-  postalCode String
-  country    String   @default("PL")
-  phone      String?
-  email      String?
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id             String   @id @default(cuid())
+  name           String
+  street         String
+  city           String
+  postalCode     String
+  country        String   @default("PL")
+  phone          String?
+  email          String?
+  defaultCarrier String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 enum PickupStatus {

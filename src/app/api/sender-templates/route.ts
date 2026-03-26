@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { name, street, city, postalCode, country, phone, email } = body;
+  const { name, street, city, postalCode, country, phone, email, defaultCarrier } = body;
 
   if (!name || !street || !city || !postalCode) {
     return Response.json(
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       country: country || "PL",
       phone: phone || null,
       email: email || null,
+      defaultCarrier: defaultCarrier || null,
     },
   });
 

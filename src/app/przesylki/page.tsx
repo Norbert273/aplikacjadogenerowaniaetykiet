@@ -18,6 +18,9 @@ interface Shipment {
   recipientName: string;
   hasLabel: boolean;
   whatsappSent: boolean;
+  carrierStatus: string | null;
+  carrierStatusPl: string | null;
+  carrierStatusAt: string | null;
   createdAt: string;
   user: { name: string; email: string };
 }
@@ -27,6 +30,7 @@ export default function PrzesylkiPage() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [sendingWhatsApp, setSendingWhatsApp] = useState<string | null>(null);
+  const [trackingId, setTrackingId] = useState<string | null>(null);
 
   // Pickup modal
   const [pickupShipmentId, setPickupShipmentId] = useState<string | null>(null);
@@ -112,7 +116,7 @@ export default function PrzesylkiPage() {
   }
 
   async function handleCancel(shipmentId: string) {
-    if (!confirm("Czy na pewno chcesz anulować tę przesyłkę?\n\nPrzesyłka zostanie anulowana w InPost i opłata nie zostanie pobrana (jeśli paczka nie została jeszcze nadana).")) return;
+    if (!confirm("Czy na pewno chcesz anulować tę przesyłkę?\n\nPrzesyłka zostanie anulowana i opłata nie zostanie pobrana (jeśli paczka nie została jeszcze nadana).")) return;
 
     setCancellingId(shipmentId);
     try {
@@ -140,18 +144,46 @@ export default function PrzesylkiPage() {
     }
   }
 
-  async function handleCheckStatus(shipmentId: string) {
+  async function handleRefreshTracking(shipmentId: string) {
+    setTrackingId(shipmentId);
     try {
-      const res = await fetch(`/api/shipments/${shipmentId}/cancel`);
+      const res = await fetch(`/api/shipments/${shipmentId}/track`, {
+        method: "POST",
+      });
       const data = await res.json();
-      if (data.inpostStatus) {
-        alert(`Status InPost: ${data.inpostStatusPl}\nStatus lokalny: ${data.localStatus}`);
+      if (res.ok) {
+        setShipments((prev) =>
+          prev.map((s) =>
+            s.id === shipmentId
+              ? {
+                  ...s,
+                  carrierStatus: data.carrierStatus,
+                  carrierStatusPl: data.carrierStatusPl,
+                  carrierStatusAt: data.updatedAt,
+                }
+              : s
+          )
+        );
       } else {
-        alert(`Status lokalny: ${data.localStatus}`);
+        alert(data.error || "Błąd sprawdzania statusu");
       }
     } catch {
-      alert("Błąd sprawdzania statusu");
+      alert("Błąd połączenia");
+    } finally {
+      setTrackingId(null);
     }
+  }
+
+  function formatTimeAgo(dateStr: string | null): string {
+    if (!dateStr) return "";
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return "przed chwilą";
+    if (minutes < 60) return `${minutes} min temu`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h temu`;
+    const days = Math.floor(hours / 24);
+    return `${days}d temu`;
   }
 
   if (loading) {
@@ -264,6 +296,9 @@ export default function PrzesylkiPage() {
                     Status
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">
+                    Status paczki
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">
                     Akcje
                   </th>
                 </tr>
@@ -304,6 +339,46 @@ export default function PrzesylkiPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {shipment.carrierStatusPl ? (
+                          <div>
+                            <span className="text-xs font-medium text-gray-800">
+                              {shipment.carrierStatusPl}
+                            </span>
+                            {shipment.carrierStatusAt && (
+                              <div className="text-[10px] text-gray-400">
+                                {formatTimeAgo(shipment.carrierStatusAt)}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                        {shipment.hasLabel && (
+                          <button
+                            onClick={() => handleRefreshTracking(shipment.id)}
+                            disabled={trackingId === shipment.id}
+                            className="text-blue-500 hover:text-blue-700 disabled:opacity-50"
+                            title="Odśwież status"
+                          >
+                            <svg
+                              className={`w-4 h-4 ${trackingId === shipment.id ? "animate-spin" : ""}`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                              />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
                       <div className="flex gap-2">
                         {shipment.hasLabel && (
                           <a
@@ -335,14 +410,6 @@ export default function PrzesylkiPage() {
                             className="text-purple-600 hover:text-purple-800 text-xs font-medium"
                           >
                             Kurier
-                          </button>
-                        )}
-                        {shipment.hasLabel && (
-                          <button
-                            onClick={() => handleCheckStatus(shipment.id)}
-                            className="text-gray-600 hover:text-gray-800 text-xs font-medium"
-                          >
-                            Status
                           </button>
                         )}
                         {shipment.status !== "ERROR" && (
