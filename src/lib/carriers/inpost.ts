@@ -415,7 +415,15 @@ export async function cancelInPostShipment(shipmentId: string): Promise<CancelRe
     const currentShipment = await getShipmentData(config, shipmentId);
     const currentStatus = currentShipment.status || "unknown";
 
-    if (currentStatus === "dispatched" || currentStatus === "collected" || currentStatus === "delivered") {
+    if (currentStatus === "confirmed") {
+      return {
+        success: false,
+        status: currentStatus,
+        message: `Nie można anulować - przesyłka jest już potwierdzona w InPost. Etykieta została wygenerowana i opłacona. Skontaktuj się z InPost w celu anulowania.`,
+      };
+    }
+
+    if (currentStatus === "dispatched" || currentStatus === "collected" || currentStatus === "delivered" || currentStatus === "adopting" || currentStatus === "adopted") {
       return {
         success: false,
         status: currentStatus,
