@@ -236,14 +236,15 @@ export async function deleteDHLShipment(shipmentId: string): Promise<void> {
   const args = {
     authData: getAuthData(config),
     shipments: {
-      item: {
-        shipmentId: shipmentId,
-      },
+      item: shipmentId,
     },
   };
 
+  console.log("DHL deleteShipments args:", JSON.stringify(args, null, 2));
+
   try {
-    await client.deleteShipmentsAsync(args);
+    const [result] = await client.deleteShipmentsAsync(args);
+    console.log("DHL deleteShipments result:", JSON.stringify(result, null, 2));
   } catch (error: unknown) {
     console.error("DHL deleteShipments error:", error);
     const msg = error instanceof Error ? error.message : String(error);
