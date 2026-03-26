@@ -14,30 +14,6 @@ export async function GET() {
 
   const status = getWhatsAppStatus();
 
-  // Auto-init if not started
-  if (!status.isReady && !status.isInitializing && !status.qrCode) {
-    try {
-      initWhatsApp().catch((err) =>
-        console.error("[WhatsApp] Background init error:", err)
-      );
-      // Return initializing status immediately
-      return Response.json({
-        isReady: false,
-        hasQR: false,
-        qrDataUrl: null,
-        isInitializing: true,
-      });
-    } catch {
-      return Response.json({
-        isReady: false,
-        hasQR: false,
-        qrDataUrl: null,
-        isInitializing: false,
-        error: "Błąd inicjalizacji WhatsApp",
-      });
-    }
-  }
-
   let qrDataUrl: string | null = null;
   if (status.qrCode) {
     try {
@@ -52,6 +28,7 @@ export async function GET() {
     hasQR: !!status.qrCode,
     qrDataUrl,
     isInitializing: status.isInitializing,
+    error: status.lastError,
   });
 }
 
@@ -64,12 +41,30 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { action } = body;
 
-  if (action === "reconnect") {
-    await destroyWhatsApp();
-    initWhatsApp().catch((err) =>
-      console.error("[WhatsApp] Reconnect error:", err)
-    );
-    return Response.json({ success: true, message: "Ponowne łączenie..." });
+  if (action === "connect" || action === "reconnect") {
+    if (action === "reconnect") {
+      await destroyWhatsApp();
+    }
+    try {
+      // Don't await - let it initialize in background
+      initWhatsApp().catch((err) =>
+        console.error("[WhatsApp] Init error:", err)
+      );
+      return Response.json({
+        success: true,
+        message: "Uruchamianie WhatsApp...",
+      });
+    } catch (error) {
+      return Response.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Błąd uruchamiania WhatsApp",
+        },
+        { status: 500 }
+      );
+    }
   }
 
   if (action === "disconnect") {

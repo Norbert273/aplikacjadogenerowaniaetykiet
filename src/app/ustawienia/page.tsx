@@ -207,7 +207,7 @@ export default function UstawieniaPage() {
     }
   }
 
-  async function handleWhatsAppAction(action: "reconnect" | "disconnect") {
+  async function handleWhatsAppAction(action: "connect" | "reconnect" | "disconnect") {
     setWaLoading(true);
     try {
       const res = await fetch("/api/whatsapp/status", {
@@ -217,10 +217,13 @@ export default function UstawieniaPage() {
       });
       if (res.ok) {
         // Wait a bit then refresh status
-        setTimeout(fetchWhatsAppStatus, 1000);
+        setTimeout(fetchWhatsAppStatus, 2000);
+      } else {
+        const data = await res.json();
+        setWaStatus((prev) => ({ ...prev, error: data.error }));
       }
     } catch {
-      // ignore
+      setWaStatus((prev) => ({ ...prev, error: "Błąd połączenia z serwerem" }));
     } finally {
       setWaLoading(false);
     }
@@ -440,9 +443,9 @@ export default function UstawieniaPage() {
 
         {/* Actions */}
         <div className="flex gap-3">
-          {!waStatus.isReady && !waStatus.isInitializing && (
+          {!waStatus.isReady && !waStatus.isInitializing && !waStatus.hasQR && (
             <button
-              onClick={() => handleWhatsAppAction("reconnect")}
+              onClick={() => handleWhatsAppAction("connect")}
               disabled={waLoading}
               className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
             >

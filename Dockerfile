@@ -24,8 +24,6 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
 # Install Chromium and dependencies for whatsapp-web.js
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
@@ -34,6 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Set Chromium path - debian slim uses /usr/bin/chromium
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 RUN groupadd --system --gid 1001 nodejs
 RUN useradd --system --uid 1001 nextjs
