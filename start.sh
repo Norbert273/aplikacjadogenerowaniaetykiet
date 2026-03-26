@@ -38,20 +38,14 @@ echo "=== Running seed ==="
 echo "ADMIN_EMAIL is set: $([ -n "$ADMIN_EMAIL" ] && echo 'YES' || echo 'NO')"
 node prisma/seed.mjs 2>&1 || echo "WARNING: Seed failed (admin may already exist)"
 
-echo "=== Checking Chromium for WhatsApp ==="
-CHROMIUM_PATH=""
-for p in /usr/bin/chromium /usr/bin/chromium-browser /usr/bin/google-chrome; do
-  if [ -x "$p" ]; then
-    CHROMIUM_PATH="$p"
-    break
-  fi
-done
-if [ -n "$CHROMIUM_PATH" ]; then
-  echo "Chromium found at: $CHROMIUM_PATH"
-  echo "Version: $($CHROMIUM_PATH --version 2>/dev/null || echo 'unknown')"
-  export PUPPETEER_EXECUTABLE_PATH="$CHROMIUM_PATH"
+echo "=== Checking Chrome for WhatsApp ==="
+if [ -d "/app/.cache/puppeteer" ]; then
+  echo "Puppeteer Chrome cache found at /app/.cache/puppeteer"
+  find /app/.cache/puppeteer -name "chrome" -type f 2>/dev/null | head -1 | while read p; do
+    echo "Chrome binary: $p"
+  done
 else
-  echo "WARNING: Chromium not found - WhatsApp integration will not work"
+  echo "WARNING: Puppeteer Chrome cache not found - WhatsApp integration may not work"
 fi
 
 echo "=== Starting application ==="
