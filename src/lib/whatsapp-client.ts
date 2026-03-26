@@ -54,9 +54,13 @@ function createClient(): Client {
   console.log("[WhatsApp] Using Chromium:", executablePath);
   console.log("[WhatsApp] Auth data path:", authPath);
 
-  // Set env to disable crashpad before launching
-  process.env.CHROME_CRASHPAD_PIPE_NAME = "";
-  process.env.CRASHPAD_DISABLE = "1";
+  // Ensure XDG dirs point to writable location (fixes crashpad in Docker)
+  if (!process.env.XDG_CONFIG_HOME) {
+    process.env.XDG_CONFIG_HOME = "/tmp/.chromium";
+  }
+  if (!process.env.XDG_CACHE_HOME) {
+    process.env.XDG_CACHE_HOME = "/tmp/.chromium";
+  }
 
   return new Client({
     authStrategy: new LocalAuth({ dataPath: authPath }),
@@ -67,14 +71,8 @@ function createClient(): Client {
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
-        "--disable-crash-reporter",
-        "--disable-breakpad",
-        "--crash-dumps-dir=/tmp",
-        "--disable-extensions",
-        "--disable-background-networking",
         "--no-first-run",
         "--no-zygote",
-        "--disable-features=Crashpad",
       ],
       executablePath,
     },
