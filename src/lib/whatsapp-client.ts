@@ -9,28 +9,6 @@ let isReady = false;
 let isInitializing = false;
 let lastError: string | null = null;
 
-function findChromium(): string {
-  // Check env var first
-  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
-  }
-  // Common paths
-  const paths = [
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable",
-  ];
-  for (const p of paths) {
-    if (fs.existsSync(p)) {
-      console.log("[WhatsApp] Found Chromium at:", p);
-      return p;
-    }
-  }
-  console.error("[WhatsApp] Chromium not found in any known path");
-  return "/usr/bin/chromium";
-}
-
 function getAuthPath(): string {
   // Use /app/.wwebjs_auth in production, local path in dev
   const prodPath = "/app/.wwebjs_auth";
@@ -49,10 +27,7 @@ function getAuthPath(): string {
 }
 
 function createClient(): Client {
-  const executablePath = findChromium();
   const authPath = getAuthPath();
-  console.log("[WhatsApp] Using Chromium:", executablePath);
-  console.log("[WhatsApp] Auth data path:", authPath);
 
   // Ensure XDG dirs point to writable location (fixes crashpad in Docker)
   if (!process.env.XDG_CONFIG_HOME) {
@@ -62,21 +37,26 @@ function createClient(): Client {
     process.env.XDG_CACHE_HOME = "/tmp/.chromium";
   }
 
+  // Use Puppeteer's bundled Chrome (don't set executablePath)
+  // Puppeteer downloads a compatible Chrome version during npm install
+  const puppeteerOptions: Record<string, unknown> = {
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-first-run",
+      "--no-zygote",
+    ],
+  };
+
+  console.log("[WhatsApp] Auth data path:", authPath);
+  console.log("[WhatsApp] Using Puppeteer bundled Chrome");
+
   return new Client({
     authStrategy: new LocalAuth({ dataPath: authPath }),
-    puppeteer: {
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--no-first-run",
-        "--no-zygote",
-        "--disable-features=PartitionAllocSchedulerLoopQuarantineTaskControlledPurge",
-      ],
-      executablePath,
-    },
+    puppeteer: puppeteerOptions,
   });
 }
 

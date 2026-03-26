@@ -6,9 +6,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
-ENV PUPPETEER_SKIP_DOWNLOAD=true
+# Let Puppeteer download its own compatible Chrome
+ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 RUN npm ci --ignore-scripts
 RUN npx prisma generate
+# Download Puppeteer's compatible Chrome binary
+RUN npx puppeteer browsers install chrome
 
 # Build
 FROM base AS builder
@@ -23,34 +26,32 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-ENV PUPPETEER_SKIP_DOWNLOAD=true
-# Install Chromium and dependencies for whatsapp-web.js
+
+# Install only the shared libraries Chrome needs (not system chromium itself)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
     fonts-liberation \
     fonts-noto-color-emoji \
     netcat-openbsd \
     ca-certificates \
-    libgbm1 \
+    libglib2.0-0 \
     libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
     libatk-bridge2.0-0 \
-    libasound2 \
     libcups2 \
     libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
     libxcomposite1 \
     libxdamage1 \
+    libxfixes3 \
     libxrandr2 \
+    libgbm1 \
     libpango-1.0-0 \
-    dbus \
+    libcairo2 \
+    libasound2 \
+    libxshmfence1 \
     && rm -rf /var/lib/apt/lists/*
-
-# Neutralize chrome_crashpad_handler - replace with /bin/true so it exits 0
-RUN for f in $(find /usr -name 'chrome_crashpad_handler' -o -name 'chrome-crashpad-handler' 2>/dev/null); do \
-      mv "$f" "${f}.bak" && ln -s /bin/true "$f"; \
-    done; true
-
-# Set Chromium path - debian slim uses /usr/bin/chromium
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 RUN groupadd --system --gid 1001 nodejs
 RUN useradd --system --uid 1001 --create-home --home-dir /home/nextjs -g nodejs nextjs
@@ -63,8 +64,12 @@ COPY --from=builder /app/src/generated ./src/generated
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/package.json ./package.json
 
-# Copy all node_modules for prisma db push + seed (prisma CLI has many transitive deps)
+# Copy all node_modules for prisma db push + seed
 COPY --from=deps /app/node_modules ./node_modules
+# Copy Puppeteer's downloaded Chrome binary
+COPY --from=deps /app/.cache/puppeteer /app/.cache/puppeteer
+ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
+
 COPY prisma/seed.mjs ./prisma/seed.mjs
 COPY start.sh ./start.sh
 
@@ -72,10 +77,9 @@ RUN chmod +x ./start.sh
 
 # Fix permissions: nextjs user needs write access
 RUN mkdir -p /app/.wwebjs_auth && \
-    chown -R nextjs:nodejs /app/.wwebjs_auth /app/node_modules/@prisma
+    chown -R nextjs:nodejs /app/.wwebjs_auth /app/node_modules/@prisma /app/.cache
 
-# Fix chrome_crashpad_handler: point XDG dirs to writable /tmp
-# This is the actual fix - crashpad needs a writable dir for its database
+# Crashpad fix: point XDG dirs to writable /tmp
 ENV XDG_CONFIG_HOME=/tmp/.chromium
 ENV XDG_CACHE_HOME=/tmp/.chromium
 
@@ -84,6 +88,6 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-# Force rebuild v3 - whatsapp-web.js migration
+# Force rebuild v4 - puppeteer bundled chrome
 
 CMD ["./start.sh"]
