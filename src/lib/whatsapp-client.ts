@@ -54,6 +54,10 @@ function createClient(): Client {
   console.log("[WhatsApp] Using Chromium:", executablePath);
   console.log("[WhatsApp] Auth data path:", authPath);
 
+  // Set env to disable crashpad before launching
+  process.env.CHROME_CRASHPAD_PIPE_NAME = "";
+  process.env.CRASHPAD_DISABLE = "1";
+
   return new Client({
     authStrategy: new LocalAuth({ dataPath: authPath }),
     puppeteer: {
@@ -64,11 +68,13 @@ function createClient(): Client {
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--disable-crash-reporter",
-        "--disable-crashpad",
+        "--disable-breakpad",
+        "--crash-dumps-dir=/tmp",
         "--disable-extensions",
         "--disable-background-networking",
         "--no-first-run",
         "--no-zygote",
+        "--disable-features=Crashpad",
       ],
       executablePath,
     },
