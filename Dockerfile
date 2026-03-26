@@ -31,7 +31,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-color-emoji \
     netcat-openbsd \
     ca-certificates \
+    libgbm1 \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libasound2 \
+    libcups2 \
+    libdrm2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libpango-1.0-0 \
+    dbus \
     && rm -rf /var/lib/apt/lists/*
+
+# Neutralize chrome_crashpad_handler - replace with /bin/true so it exits 0
+RUN for f in $(find /usr -name 'chrome_crashpad_handler' -o -name 'chrome-crashpad-handler' 2>/dev/null); do \
+      mv "$f" "${f}.bak" && ln -s /bin/true "$f"; \
+    done; true
 
 # Set Chromium path - debian slim uses /usr/bin/chromium
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
