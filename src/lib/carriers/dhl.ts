@@ -37,7 +37,7 @@ async function getDHLConfig(): Promise<DHLConfig> {
   const apiUrl =
     urlSetting?.value ||
     process.env.DHL_API_URL ||
-    "https://dhl24.com.pl/webapi2";
+    "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
 
   if (!username || !password || !sapNumber) {
     throw new Error(
