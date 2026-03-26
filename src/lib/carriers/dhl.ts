@@ -37,7 +37,7 @@ async function getDHLConfig(): Promise<DHLConfig> {
   const apiUrl =
     urlSetting?.value ||
     process.env.DHL_API_URL ||
-    "https://dhl24.com.pl/webapi2";
+    "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
 
   if (!username || !password || !sapNumber) {
     throw new Error(
@@ -74,7 +74,7 @@ function cleanPostalCode(code: string): string {
 // Build SOAP XML envelope
 function buildSoapEnvelope(method: string, body: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="http://ws.dpd.com.pl/webapi2">
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="https://dhl24.com.pl/webapi2/provider/service.html?ws=1">
   <soapenv:Body>
     <ws:${method}>
       ${body}
@@ -102,7 +102,8 @@ function escapeXml(str: string): string {
 async function soapCall(config: DHLConfig, method: string, body: string): Promise<string> {
   const envelope = buildSoapEnvelope(method, body);
 
-  console.log(`DHL SOAP call: ${method}`);
+  console.log(`DHL SOAP call: ${method} to ${config.apiUrl}`);
+  console.log(`DHL SOAP envelope (first 500 chars):`, envelope.substring(0, 500));
 
   const response = await fetch(config.apiUrl, {
     method: "POST",
@@ -128,14 +129,14 @@ async function soapCall(config: DHLConfig, method: string, body: string): Promis
 
 // Extract value from XML by tag name
 function extractXmlValue(xml: string, tag: string): string {
-  const regex = new RegExp(`<(?:[^:]+:)?${tag}[^>]*>(.*?)</(?:[^:]+:)?${tag}>`, "s");
+  const regex = new RegExp(`<(?:[^:]+:)?${tag}[^>]*>([\\s\\S]*?)</(?:[^:]+:)?${tag}>`);
   const match = xml.match(regex);
   return match?.[1]?.trim() || "";
 }
 
 // Extract all values for a tag
 function extractAllXmlValues(xml: string, tag: string): string[] {
-  const regex = new RegExp(`<(?:[^:]+:)?${tag}[^>]*>(.*?)</(?:[^:]+:)?${tag}>`, "gs");
+  const regex = new RegExp(`<(?:[^:]+:)?${tag}[^>]*>([\\s\\S]*?)</(?:[^:]+:)?${tag}>`, "g");
   const matches: string[] = [];
   let match;
   while ((match = regex.exec(xml)) !== null) {
