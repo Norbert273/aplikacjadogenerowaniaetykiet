@@ -117,8 +117,8 @@ async function soapCall(config: DHLConfig, method: string, body: string): Promis
 
   if (!response.ok) {
     // Extract fault message from SOAP response
-    const faultMatch = responseText.match(/<faultstring>(.*?)<\/faultstring>/s);
-    const detailMatch = responseText.match(/<detail>(.*?)<\/detail>/s);
+    const faultMatch = responseText.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
+    const detailMatch = responseText.match(/<detail>([\s\S]*?)<\/detail>/);
     const errorMsg = faultMatch?.[1] || detailMatch?.[1] || responseText.substring(0, 500);
     throw new Error(`DHL API error: ${response.status} - ${errorMsg}`);
   }
