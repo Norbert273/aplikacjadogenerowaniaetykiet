@@ -39,8 +39,17 @@ echo "ADMIN_EMAIL is set: $([ -n "$ADMIN_EMAIL" ] && echo 'YES' || echo 'NO')"
 node prisma/seed.mjs 2>&1 || echo "WARNING: Seed failed (admin may already exist)"
 
 echo "=== Checking Chromium for WhatsApp ==="
-if which chromium > /dev/null 2>&1; then
-  echo "Chromium found: $(chromium --version 2>/dev/null || echo 'installed')"
+CHROMIUM_PATH=""
+for p in /usr/bin/chromium /usr/bin/chromium-browser /usr/bin/google-chrome; do
+  if [ -x "$p" ]; then
+    CHROMIUM_PATH="$p"
+    break
+  fi
+done
+if [ -n "$CHROMIUM_PATH" ]; then
+  echo "Chromium found at: $CHROMIUM_PATH"
+  echo "Version: $($CHROMIUM_PATH --version 2>/dev/null || echo 'unknown')"
+  export PUPPETEER_EXECUTABLE_PATH="$CHROMIUM_PATH"
 else
   echo "WARNING: Chromium not found - WhatsApp integration will not work"
 fi

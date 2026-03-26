@@ -1,14 +1,61 @@
 import { Client, LocalAuth, MessageMedia } from "whatsapp-web.js";
+import * as fs from "fs";
+import * as path from "path";
 
 // Global singleton state
 let client: Client | null = null;
 let qrCode: string | null = null;
 let isReady = false;
 let isInitializing = false;
+let lastError: string | null = null;
+
+function findChromium(): string {
+  // Check env var first
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  // Common paths
+  const paths = [
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+  ];
+  for (const p of paths) {
+    if (fs.existsSync(p)) {
+      console.log("[WhatsApp] Found Chromium at:", p);
+      return p;
+    }
+  }
+  console.error("[WhatsApp] Chromium not found in any known path");
+  return "/usr/bin/chromium";
+}
+
+function getAuthPath(): string {
+  // Use /app/.wwebjs_auth in production, local path in dev
+  const prodPath = "/app/.wwebjs_auth";
+  if (fs.existsSync("/app")) {
+    return prodPath;
+  }
+  const devPath = path.join(process.cwd(), ".wwebjs_auth");
+  if (!fs.existsSync(devPath)) {
+    try {
+      fs.mkdirSync(devPath, { recursive: true });
+    } catch {
+      // ignore
+    }
+  }
+  return devPath;
+}
 
 function createClient(): Client {
+  const executablePath = findChromium();
+  const authPath = getAuthPath();
+  console.log("[WhatsApp] Using Chromium:", executablePath);
+  console.log("[WhatsApp] Auth data path:", authPath);
+
   return new Client({
-    authStrategy: new LocalAuth({ dataPath: "/app/.wwebjs_auth" }),
+    authStrategy: new LocalAuth({ dataPath: authPath }),
     puppeteer: {
       headless: true,
       args: [
@@ -20,8 +67,7 @@ function createClient(): Client {
         "--no-zygote",
         "--single-process",
       ],
-      executablePath:
-        process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
+      executablePath,
     },
   });
 }
@@ -32,6 +78,7 @@ export async function initWhatsApp(): Promise<void> {
 
   isInitializing = true;
   qrCode = null;
+  lastError = null;
 
   try {
     client = createClient();
@@ -40,6 +87,8 @@ export async function initWhatsApp(): Promise<void> {
       console.log("[WhatsApp] QR code received");
       qrCode = qr;
       isReady = false;
+      isInitializing = false;
+      lastError = null;
     });
 
     client.on("ready", () => {
@@ -47,6 +96,7 @@ export async function initWhatsApp(): Promise<void> {
       isReady = true;
       qrCode = null;
       isInitializing = false;
+      lastError = null;
     });
 
     client.on("authenticated", () => {
@@ -58,6 +108,7 @@ export async function initWhatsApp(): Promise<void> {
       isReady = false;
       isInitializing = false;
       qrCode = null;
+      lastError = `Błąd autoryzacji: ${msg}`;
       client = null;
     });
 
@@ -67,15 +118,19 @@ export async function initWhatsApp(): Promise<void> {
       qrCode = null;
       client = null;
       isInitializing = false;
+      lastError = `Rozłączono: ${reason}`;
     });
 
     await client.initialize();
   } catch (error) {
-    console.error("[WhatsApp] Init error:", error);
+    const errorMsg =
+      error instanceof Error ? error.message : String(error);
+    console.error("[WhatsApp] Init error:", errorMsg);
     isReady = false;
     isInitializing = false;
     qrCode = null;
     client = null;
+    lastError = `Błąd uruchamiania: ${errorMsg}`;
     throw error;
   }
 }
@@ -84,8 +139,9 @@ export function getWhatsAppStatus(): {
   isReady: boolean;
   qrCode: string | null;
   isInitializing: boolean;
+  lastError: string | null;
 } {
-  return { isReady, qrCode, isInitializing };
+  return { isReady, qrCode, isInitializing, lastError };
 }
 
 export async function getWhatsAppGroups(): Promise<
@@ -101,8 +157,8 @@ export async function getWhatsAppGroups(): Promise<
   return groups.map((g) => ({
     id: g.id._serialized,
     name: g.name,
-    participantCount: (g as unknown as { participants?: unknown[] })
-      .participants?.length ?? 0,
+    participantCount:
+      (g as unknown as { participants?: unknown[] }).participants?.length ?? 0,
   }));
 }
 
@@ -158,5 +214,6 @@ export async function destroyWhatsApp(): Promise<void> {
     isReady = false;
     qrCode = null;
     isInitializing = false;
+    lastError = null;
   }
 }
