@@ -72,7 +72,7 @@ RUN chmod +x ./start.sh
 
 # Fix permissions: nextjs user needs write access
 RUN mkdir -p /app/.wwebjs_auth && \
-    chown -R nextjs:nodejs /app/.wwebjs_auth /app/node_modules/.prisma /app/node_modules/@prisma
+    chown -R nextjs:nodejs /app/.wwebjs_auth /app/node_modules/@prisma
 
 # Fix chrome_crashpad_handler: point XDG dirs to writable /tmp
 # This is the actual fix - crashpad needs a writable dir for its database
