@@ -11,6 +11,7 @@ interface SenderTemplate {
   country: string;
   phone: string | null;
   email: string | null;
+  defaultCarrier: string | null;
 }
 
 const emptyForm = {
@@ -21,6 +22,7 @@ const emptyForm = {
   country: "PL",
   phone: "",
   email: "",
+  defaultCarrier: "",
 };
 
 export default function NadawcyPage() {
@@ -56,6 +58,7 @@ export default function NadawcyPage() {
       country: template.country,
       phone: template.phone || "",
       email: template.email || "",
+      defaultCarrier: template.defaultCarrier || "",
     });
     setShowForm(true);
     setError("");
@@ -116,6 +119,18 @@ export default function NadawcyPage() {
     } catch {
       alert("Błąd połączenia");
     }
+  }
+
+  function getCarrierLabel(carrier: string | null): string {
+    if (carrier === "INPOST") return "InPost";
+    if (carrier === "DHL") return "DHL";
+    return "";
+  }
+
+  function getCarrierColor(carrier: string | null): string {
+    if (carrier === "INPOST") return "text-orange-600 bg-orange-50";
+    if (carrier === "DHL") return "text-yellow-700 bg-yellow-50";
+    return "";
   }
 
   if (loading) {
@@ -249,6 +264,49 @@ export default function NadawcyPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 />
               </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Domyślny kurier
+                </label>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, defaultCarrier: "" })}
+                    className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
+                      formData.defaultCarrier === ""
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-200 text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    Brak
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, defaultCarrier: "INPOST" })}
+                    className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
+                      formData.defaultCarrier === "INPOST"
+                        ? "border-orange-400 bg-orange-50 text-orange-700"
+                        : "border-gray-200 text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    InPost
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, defaultCarrier: "DHL" })}
+                    className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
+                      formData.defaultCarrier === "DHL"
+                        ? "border-yellow-400 bg-yellow-50 text-yellow-700"
+                        : "border-gray-200 text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    DHL
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Po wybraniu szablonu kurier zostanie automatycznie ustawiony
+                </p>
+              </div>
             </div>
 
             <div className="flex gap-3">
@@ -290,7 +348,14 @@ export default function NadawcyPage() {
               key={t.id}
               className="bg-white rounded-xl shadow-sm border border-gray-200 p-5"
             >
-              <h3 className="font-semibold text-gray-900 mb-2">{t.name}</h3>
+              <div className="flex items-start justify-between mb-2">
+                <h3 className="font-semibold text-gray-900">{t.name}</h3>
+                {t.defaultCarrier && (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getCarrierColor(t.defaultCarrier)}`}>
+                    {getCarrierLabel(t.defaultCarrier)}
+                  </span>
+                )}
+              </div>
               <div className="text-sm text-gray-600 space-y-1">
                 <p>{t.street}</p>
                 <p>

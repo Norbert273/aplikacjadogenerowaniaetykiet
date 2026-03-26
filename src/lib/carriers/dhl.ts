@@ -298,3 +298,40 @@ export async function requestDHLPickup(data: DHLPickupData): Promise<string> {
     throw new Error(`DHL API error: ${msg}`);
   }
 }
+
+const DHL_STATUS_MAP: Record<string, string> = {
+  SHIPMENT_CREATED: "Utworzona",
+  SHIPMENT_PICKUP: "Odebrana przez kuriera",
+  IN_TRANSIT: "W transporcie",
+  OUT_FOR_DELIVERY: "W doręczeniu",
+  DELIVERED: "Doręczona",
+  RETURNED: "Zwrócona",
+  UNKNOWN: "Nieznany",
+};
+
+export async function getDHLTrackingStatus(shipmentId: string): Promise<{ status: string; statusPl: string }> {
+  const config = await getDHLConfig();
+  const client = await getSoapClient(config);
+
+  const args = {
+    authData: getAuthData(config),
+    shipmentId: shipmentId,
+  };
+
+  try {
+    const [result] = await client.getTrackAndTraceInfoAsync(args);
+    console.log("DHL tracking result:", JSON.stringify(result, null, 2));
+
+    const events = result?.trackAndTraceInfo?.item || result?.item || [];
+    const eventList = Array.isArray(events) ? events : [events];
+    const latestEvent = eventList[0];
+
+    const status = latestEvent?.status || latestEvent?.terminal || "UNKNOWN";
+    const statusPl = DHL_STATUS_MAP[status] || latestEvent?.description || status;
+
+    return { status, statusPl };
+  } catch (error: unknown) {
+    console.error("DHL tracking error:", error);
+    return { status: "unknown", statusPl: "Nie można pobrać statusu" };
+  }
+}

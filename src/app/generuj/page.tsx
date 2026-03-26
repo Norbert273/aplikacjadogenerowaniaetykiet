@@ -10,6 +10,7 @@ interface SenderTemplate {
   postalCode: string;
   phone: string | null;
   email: string | null;
+  defaultCarrier: string | null;
 }
 
 interface CompanyAddress {
@@ -97,6 +98,9 @@ export default function GenerujPage() {
         phone: template.phone || "",
         email: template.email || "",
       });
+      if (template.defaultCarrier === "INPOST" || template.defaultCarrier === "DHL") {
+        setCarrier(template.defaultCarrier);
+      }
     }
   }
 
@@ -213,29 +217,65 @@ export default function GenerujPage() {
 
       {/* Carrier Selection */}
       {!carrier && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
-          <button
-            onClick={() => setCarrier("INPOST")}
-            className="bg-white rounded-xl shadow-sm border-2 border-gray-200 p-8 hover:border-orange-400 hover:shadow-md transition-all text-left"
-          >
-            <div className="text-3xl font-bold text-orange-500 mb-2">
-              InPost
+        <div className="max-w-2xl">
+          {templates.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+              <h3 className="font-semibold text-gray-900 mb-3">
+                Szybki wybór - szablon nadawcy
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {templates.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleSelectTemplate(t.id)}
+                    className="p-3 rounded-lg border-2 border-gray-200 hover:border-blue-400 text-left transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium text-sm">{t.name}</div>
+                      {t.defaultCarrier && (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                          t.defaultCarrier === "INPOST"
+                            ? "text-orange-600 bg-orange-50"
+                            : "text-yellow-700 bg-yellow-50"
+                        }`}>
+                          {t.defaultCarrier === "INPOST" ? "InPost" : "DHL"}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {t.street}, {t.postalCode} {t.city}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-            <p className="text-gray-500 text-sm">
-              Paczkomaty i kurierska dostawa InPost. Wybierz rozmiar paczki A, B
-              lub C.
-            </p>
-          </button>
+          )}
 
-          <button
-            onClick={() => setCarrier("DHL")}
-            className="bg-white rounded-xl shadow-sm border-2 border-gray-200 p-8 hover:border-yellow-400 hover:shadow-md transition-all text-left"
-          >
-            <div className="text-3xl font-bold text-yellow-600 mb-2">DHL</div>
-            <p className="text-gray-500 text-sm">
-              Kurier DHL Express. Podaj wagę paczki w kilogramach.
-            </p>
-          </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <button
+              onClick={() => setCarrier("INPOST")}
+              className="bg-white rounded-xl shadow-sm border-2 border-gray-200 p-8 hover:border-orange-400 hover:shadow-md transition-all text-left"
+            >
+              <div className="text-3xl font-bold text-orange-500 mb-2">
+                InPost
+              </div>
+              <p className="text-gray-500 text-sm">
+                Paczkomaty i kurierska dostawa InPost. Wybierz rozmiar paczki A, B
+                lub C.
+              </p>
+            </button>
+
+            <button
+              onClick={() => setCarrier("DHL")}
+              className="bg-white rounded-xl shadow-sm border-2 border-gray-200 p-8 hover:border-yellow-400 hover:shadow-md transition-all text-left"
+            >
+              <div className="text-3xl font-bold text-yellow-600 mb-2">DHL</div>
+              <p className="text-gray-500 text-sm">
+                Kurier DHL Express. Podaj wagę paczki w kilogramach.
+              </p>
+            </button>
+          </div>
         </div>
       )}
 

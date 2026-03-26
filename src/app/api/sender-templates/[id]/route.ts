@@ -13,7 +13,7 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json();
-  const { name, street, city, postalCode, country, phone, email } = body;
+  const { name, street, city, postalCode, country, phone, email, defaultCarrier } = body;
 
   const template = await prisma.senderTemplate.update({
     where: { id },
@@ -25,6 +25,7 @@ export async function PATCH(
       ...(country && { country }),
       ...(phone !== undefined && { phone: phone || null }),
       ...(email !== undefined && { email: email || null }),
+      ...(defaultCarrier !== undefined && { defaultCarrier: defaultCarrier || null }),
     },
   });
 
