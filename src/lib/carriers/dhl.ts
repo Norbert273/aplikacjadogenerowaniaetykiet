@@ -38,7 +38,7 @@ async function getDHLConfig(): Promise<DHLConfig> {
   const wsdlUrl =
     urlSetting?.value ||
     process.env.DHL_API_URL ||
-    "https://dhl24.com.pl/webapi2.html";
+    "https://dhl24.com.pl/webapi2";
 
   if (!username || !password || !sapNumber) {
     throw new Error(
@@ -152,9 +152,9 @@ export async function createDHLShipment(
           },
         },
         payment: {
-          shippingPaymentType: "SHIPPER",
-          billingAccountNumber: config.sapNumber,
-          paymentType: "BANK_TRANSFER",
+          payerType: "SHIPPER",
+          accountNumber: config.sapNumber,
+          paymentMethod: "BANK_TRANSFER",
         },
         service: {
           product: "AH",
