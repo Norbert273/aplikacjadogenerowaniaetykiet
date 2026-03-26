@@ -8,6 +8,8 @@ COPY prisma ./prisma
 COPY prisma.config.ts ./
 # Let Puppeteer download its own compatible Chrome
 ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
+# Install git for github: dependencies in package.json
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 RUN npm ci --ignore-scripts
 RUN npx prisma generate
 # Download Puppeteer's compatible Chrome binary

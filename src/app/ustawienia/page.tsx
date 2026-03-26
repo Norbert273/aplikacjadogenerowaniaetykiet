@@ -207,7 +207,7 @@ export default function UstawieniaPage() {
     }
   }
 
-  async function handleWhatsAppAction(action: "connect" | "reconnect" | "disconnect") {
+  async function handleWhatsAppAction(action: "connect" | "reconnect" | "disconnect" | "reset") {
     setWaLoading(true);
     try {
       const res = await fetch("/api/whatsapp/status", {
@@ -475,6 +475,17 @@ export default function UstawieniaPage() {
             className="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
           >
             Odśwież status
+          </button>
+          <button
+            onClick={() => {
+              if (confirm("Wyczyścić sesję WhatsApp? Będziesz musiał ponownie zeskanować QR kod.")) {
+                handleWhatsAppAction("reset");
+              }
+            }}
+            disabled={waLoading}
+            className="bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-200 transition-colors disabled:opacity-50"
+          >
+            Reset sesji
           </button>
         </div>
       </div>

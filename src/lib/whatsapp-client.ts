@@ -80,11 +80,15 @@ export async function initWhatsApp(): Promise<void> {
     });
 
     client.on("ready", () => {
-      console.log("[WhatsApp] Client is ready");
+      console.log("[WhatsApp] Client is ready!");
       isReady = true;
       qrCode = null;
       isInitializing = false;
       lastError = null;
+    });
+
+    client.on("loading_screen", (percent: number, message: string) => {
+      console.log(`[WhatsApp] Loading: ${percent}% - ${message}`);
     });
 
     client.on("authenticated", () => {
@@ -191,7 +195,7 @@ export async function sendToNumber(
   await client.sendMessage(chatId, media, { caption });
 }
 
-export async function destroyWhatsApp(): Promise<void> {
+export async function destroyWhatsApp(clearSession = false): Promise<void> {
   if (client) {
     try {
       await client.destroy();
@@ -203,5 +207,19 @@ export async function destroyWhatsApp(): Promise<void> {
     qrCode = null;
     isInitializing = false;
     lastError = null;
+  }
+
+  if (clearSession) {
+    // Clear cached session data to force fresh QR authentication
+    const authPath = getAuthPath();
+    try {
+      if (fs.existsSync(authPath)) {
+        fs.rmSync(authPath, { recursive: true, force: true });
+        fs.mkdirSync(authPath, { recursive: true });
+        console.log("[WhatsApp] Session data cleared:", authPath);
+      }
+    } catch (err) {
+      console.error("[WhatsApp] Failed to clear session:", err);
+    }
   }
 }

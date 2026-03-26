@@ -41,9 +41,12 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { action } = body;
 
-  if (action === "connect" || action === "reconnect") {
+  if (action === "connect" || action === "reconnect" || action === "reset") {
     if (action === "reconnect") {
       await destroyWhatsApp();
+    }
+    if (action === "reset") {
+      await destroyWhatsApp(true);
     }
     try {
       // Don't await - let it initialize in background

@@ -48,5 +48,11 @@ else
   echo "WARNING: Puppeteer Chrome cache not found - WhatsApp integration may not work"
 fi
 
+# Clear stale WhatsApp Web cache (prevents "ready" event from not firing)
+if [ -d "/app/.wwebjs_auth" ]; then
+  echo "=== Clearing WhatsApp Web cache ==="
+  find /app/.wwebjs_auth -name "Default" -type d -exec rm -rf {}/Service\ Worker {}/Cache {}/Code\ Cache \; 2>/dev/null || true
+fi
+
 echo "=== Starting application ==="
 node server.js
