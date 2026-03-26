@@ -74,9 +74,10 @@ RUN chmod +x ./start.sh
 RUN mkdir -p /app/.wwebjs_auth /tmp/crash-dumps && \
     chown -R nextjs:nodejs /app/.wwebjs_auth /tmp/crash-dumps
 
-# Disable Chromium crash reporting
-ENV CHROME_CRASHPAD_PIPE_NAME=""
-ENV CRASHPAD_DISABLE=1
+# Fix chrome_crashpad_handler: point XDG dirs to writable /tmp
+# This is the actual fix - crashpad needs a writable dir for its database
+ENV XDG_CONFIG_HOME=/tmp/.chromium
+ENV XDG_CACHE_HOME=/tmp/.chromium
 
 USER nextjs
 
