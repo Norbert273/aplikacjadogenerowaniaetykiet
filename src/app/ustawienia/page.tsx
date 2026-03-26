@@ -26,7 +26,7 @@ const API_KEY_LABELS: Record<string, string> = {
   DHL_API_LOGIN: "DHL Login APIv2",
   DHL_API_PASSWORD: "DHL Hasło APIv2",
   DHL_SAP_NUMBER: "DHL Numer SAP",
-  DHL_API_URL: "DHL API URL (domyślnie: dhl24.com.pl/webapi2)",
+  DHL_API_URL: "DHL API URL (domyślnie: dhl24.com.pl/webapi2/provider/service.html?ws=1)",
   WHATSAPP_TOKEN: "WhatsApp Token",
   WHATSAPP_PHONE_NUMBER_ID: "WhatsApp Phone Number ID",
 };
