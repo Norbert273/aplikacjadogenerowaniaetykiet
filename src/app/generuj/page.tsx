@@ -11,6 +11,8 @@ interface SenderTemplate {
   phone: string | null;
   email: string | null;
   defaultCarrier: string | null;
+  whatsappGroupId: string | null;
+  whatsappGroupName: string | null;
 }
 
 interface CompanyAddress {
@@ -649,7 +651,15 @@ export default function GenerujPage() {
                 ? "Wysłano WhatsApp!"
                 : whatsappSending
                   ? "Wysyłanie..."
-                  : "Wyślij przez WhatsApp"}
+                  : (() => {
+                      const selectedTemplate = templates.find(
+                        (t) => t.id === selectedTemplateId
+                      );
+                      if (selectedTemplate?.whatsappGroupName) {
+                        return `WhatsApp: ${selectedTemplate.whatsappGroupName}`;
+                      }
+                      return "Wyślij przez WhatsApp";
+                    })()}
             </button>
           </div>
 

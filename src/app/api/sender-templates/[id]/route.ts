@@ -13,7 +13,7 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json();
-  const { name, street, city, postalCode, country, phone, email, defaultCarrier } = body;
+  const { name, street, city, postalCode, country, phone, email, defaultCarrier, whatsappGroupId, whatsappGroupName } = body;
 
   const template = await prisma.senderTemplate.update({
     where: { id },
@@ -26,6 +26,8 @@ export async function PATCH(
       ...(phone !== undefined && { phone: phone || null }),
       ...(email !== undefined && { email: email || null }),
       ...(defaultCarrier !== undefined && { defaultCarrier: defaultCarrier || null }),
+      ...(whatsappGroupId !== undefined && { whatsappGroupId: whatsappGroupId || null }),
+      ...(whatsappGroupName !== undefined && { whatsappGroupName: whatsappGroupName || null }),
     },
   });
 
